@@ -4,4 +4,4 @@ website: https://sunny-peony-bdaa99.netlify.app/
 
 if got sponsor wanted to buy the domain: vibecoding-focus.com, please open an issue
 
-if got better name suggestions, please open an issue, or even better yet, a PR.
+if got better game suggestions, please open an issue, or even better yet, a PR.
