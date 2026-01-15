@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Connect the Dots</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            /* FIXED: Much darker grey for visibility */
+            --dot-color: #555;
+            --active-dot: #222;
+            --highlight: #FF5722;
+            --secondary-highlight: #ffab91;
+            --text-color: #2d3748;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            box-sizing: border-box;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #timer {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 5px 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        #game-board {
+            width: 90vmin;
+            height: 90vmin;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            position: relative;
+            touch-action: none;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* --- DOT STYLES --- */
+        .dot {
+            fill: var(--dot-color);
+            transition: all 0.3s ease;
+            r: 3.5;
+            /* Default visibility size */
+        }
+
+        /* The dot you just came from */
+        .dot.connected {
+            fill: var(--active-dot);
+        }
+
+        /* The dot you are going TO (Target) */
+        .dot.target {
+            fill: var(--highlight);
+            r: 5;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* The dot AFTER the target (Hint) */
+        .dot.upcoming {
+            fill: var(--secondary-highlight);
+        }
+
+        /* --- TEXT STYLES --- */
+        .dot-number {
+            font-size: 5px;
+            font-weight: 900;
+            pointer-events: none;
+            user-select: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            text-shadow: 0px 0px 3px white;
+        }
+
+        /* 1. Source Number (Grey) */
+        .dot-number.visible-source {
+            opacity: 1;
+            fill: var(--active-dot);
+            font-size: 5px;
+        }
+
+        /* 2. Target Number (Big Orange) */
+        .dot-number.visible-target {
+            opacity: 1;
+            fill: var(--highlight);
+            font-size: 7px;
+            /* Make it pop */
+        }
+
+        /* 3. Upcoming Number (Small Orange Fade) */
+        .dot-number.visible-upcoming {
+            opacity: 0.6;
+            fill: var(--highlight);
+            font-size: 4px;
+        }
+
+        .connection-line {
+            stroke: #2b2b2b;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            fill: none;
+        }
+
+        .preview-line {
+            stroke: var(--highlight);
+            stroke-width: 2.5;
+            stroke-dasharray: 4;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .shape-fill {
+            fill: #FFD700;
+            fill-opacity: 0;
+            transition: fill-opacity 1s ease;
+            stroke: none;
+        }
+
+        .shape-fill.finished {
+            fill-opacity: 0.3;
+        }
+
+        @keyframes pulse {
+            0% {
+                r: 5;
+                opacity: 1;
+            }
+
+            50% {
+                r: 7;
+                opacity: 0.7;
+            }
+
+            100% {
+                r: 5;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui-layer">
+        <span style="font-size: 0.9rem; color: #888;">Connect the dots</span>
+        <div id="timer">00:00</div>
+    </div>
+
+    <div id="game-board">
+        <svg id="svg-area" viewBox="0 0 100 100">
+            <!-- Content Injected via JS -->
+        </svg>
+    </div>
+
+    <script>
+        const levels = [
+            {
+                name: "Star",
+                dots: [
+                    { x: 50, y: 10 }, { x: 61, y: 35 }, { x: 90, y: 35 }, { x: 65, y: 55 },
+                    { x: 75, y: 85 }, { x: 50, y: 70 }, { x: 25, y: 85 }, { x: 35, y: 55 },
+                    { x: 10, y: 35 }, { x: 39, y: 35 }
+                ]
+            },
+            {
+                name: "House",
+                dots: [
+                    { x: 20, y: 45 }, { x: 50, y: 15 }, { x: 80, y: 45 },
+                    { x: 80, y: 85 }, { x: 20, y: 85 },
+                    { x: 20, y: 45 }, { x: 80, y: 45 }, { x: 20, y: 85 }, { x: 80, y: 85 }
+                ]
+            },
+            {
+                name: "Lightning",
+                dots: [
+                    { x: 55, y: 10 }, { x: 20, y: 50 }, { x: 45, y: 50 }, { x: 35, y: 90 },
+                    { x: 75, y: 40 }, { x: 50, y: 40 }
+                ]
+            },
+            {
+                name: "Boat",
+                dots: [
+                    { x: 30, y: 60 }, { x: 30, y: 20 }, { x: 70, y: 60 },
+                    { x: 85, y: 60 }, { x: 75, y: 85 }, { x: 25, y: 85 }, { x: 15, y: 60 }
+                ]
+            },
+            {
+                name: "Heart",
+                dots: [
+                    { x: 50, y: 30 }, { x: 70, y: 15 }, { x: 90, y: 30 }, { x: 90, y: 50 },
+                    { x: 50, y: 90 },
+                    { x: 10, y: 50 }, { x: 10, y: 30 }, { x: 30, y: 15 }, { x: 50, y: 30 }
+                ]
+            },
+            {
+                name: "Diamond",
+                dots: [
+                    { x: 50, y: 10 }, { x: 80, y: 40 }, { x: 80, y: 60 },
+                    { x: 50, y: 90 }, { x: 20, y: 60 }, { x: 20, y: 40 }
+                ]
+            },
+            {
+                name: "Umbrella",
+                dots: [
+                    { x: 10, y: 50 }, { x: 50, y: 20 }, { x: 90, y: 50 },
+                    { x: 50, y: 50 }, { x: 50, y: 80 }, { x: 40, y: 80 }, { x: 40, y: 70 }
+                ]
+            },
+            {
+                name: "Moon",
+                dots: [
+                    { x: 50, y: 10 }, { x: 70, y: 30 }, { x: 70, y: 70 }, { x: 50, y: 90 },
+                    { x: 20, y: 50 }
+                ]
+            }
+        ];
+
+        let currentLevel = null;
+        let currentLevelIndex = -1;
+        let nextDotIndex = 1;
+        let isDragging = false;
+        let startTime = Date.now();
+        let audioCtx = null;
+
+        const svgArea = document.getElementById('svg-area');
+        const timerEl = document.getElementById('timer');
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+        }
+
+        function playPopSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(400 + (nextDotIndex * 50), audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playChimeSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.5);
+        }
+
+        function loadRandomLevel() {
+            let newIndex;
+            do {
+                newIndex = Math.floor(Math.random() * levels.length);
+            } while (newIndex === currentLevelIndex && levels.length > 1);
+
+            currentLevelIndex = newIndex;
+            const levelData = levels[newIndex];
+
+            currentLevel = {
+                name: levelData.name,
+                dots: [...levelData.dots]
+            };
+
+            nextDotIndex = 1;
+            renderLevel();
+        }
+
+        function renderLevel() {
+            svgArea.innerHTML = '';
+
+            // Fill Path
+            let pathData = `M ${currentLevel.dots[0].x} ${currentLevel.dots[0].y} `;
+            currentLevel.dots.forEach(d => pathData += `L ${d.x} ${d.y} `);
+            pathData += "Z";
+
+            const fillShape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            fillShape.setAttribute("d", pathData);
+            fillShape.setAttribute("class", "shape-fill");
+            fillShape.setAttribute("id", "final-shape");
+            svgArea.appendChild(fillShape);
+
+            // Lines Group
+            const lineGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            lineGroup.setAttribute("id", "lines");
+            svgArea.appendChild(lineGroup);
+
+            // Preview Line
+            const previewLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            previewLine.setAttribute("class", "preview-line");
+            previewLine.setAttribute("id", "preview-line");
+            previewLine.setAttribute("display", "none");
+            svgArea.appendChild(previewLine);
+
+            // Dots & Numbers
+            currentLevel.dots.forEach((dot, index) => {
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("cx", dot.x);
+                circle.setAttribute("cy", dot.y);
+                circle.setAttribute("r", "6"); // ADD THIS LINE - set initial radius
+                circle.setAttribute("class", "dot");
+                circle.setAttribute("id", `dot-${index}`);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", dot.x);
+                text.setAttribute("y", dot.y - 8); // Offset slightly more for visibility
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("class", "dot-number");
+                text.setAttribute("id", `text-${index}`);
+                text.textContent = index + 1;
+
+                svgArea.appendChild(circle);
+                svgArea.appendChild(text);
+            });
+
+            // Setup Start State
+            document.getElementById(`dot-0`).classList.add('connected');
+            updateTargetVisuals(1);
+        }
+
+        function updateTargetVisuals(targetIndex) {
+            // 1. Reset everything first
+            document.querySelectorAll('.dot-number').forEach(el => {
+                el.className.baseVal = "dot-number"; // Clear all modifiers
+            });
+            document.querySelectorAll('.dot').forEach(el => {
+                // Keep 'connected' class if it has it, remove others
+                if (!el.classList.contains('connected')) {
+                    el.className.baseVal = "dot";
+                } else {
+                    el.className.baseVal = "dot connected";
+                }
+            });
+
+            const total = currentLevel.dots.length;
+
+            // 2. Highlighting Logic
+            if (targetIndex < total) {
+
+                // A. The Source (Current Position) - Index - 1
+                const sourceIndex = targetIndex - 1;
+                if (sourceIndex >= 0) {
+                    const sourceText = document.getElementById(`text-${sourceIndex}`);
+                    if (sourceText) sourceText.classList.add('visible-source');
+                }
+
+                // B. The Target (Where we are going) - Index
+                const targetText = document.getElementById(`text-${targetIndex}`);
+                if (targetText) targetText.classList.add('visible-target');
+
+                const targetDot = document.getElementById(`dot-${targetIndex}`);
+                if (targetDot) targetDot.classList.add('target');
+
+                // C. The Upcoming (Next Hint) - Index + 1
+                const upcomingIndex = targetIndex + 1;
+                if (upcomingIndex < total) {
+                    const upcomingText = document.getElementById(`text-${upcomingIndex}`);
+                    if (upcomingText) upcomingText.classList.add('visible-upcoming');
+
+                    const upcomingDot = document.getElementById(`dot-${upcomingIndex}`);
+                    if (upcomingDot) upcomingDot.classList.add('upcoming');
+                }
+            }
+        }
+
+        function getSVGCoordinates(event) {
+            const point = svgArea.createSVGPoint();
+            const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+            const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+            point.x = clientX;
+            point.y = clientY;
+            const svgPoint = point.matrixTransform(svgArea.getScreenCTM().inverse());
+            return { x: svgPoint.x, y: svgPoint.y };
+        }
+
+        function handleStart(e) {
+            initAudio();
+            const coords = getSVGCoordinates(e);
+            const lastDot = currentLevel.dots[nextDotIndex - 1];
+
+            const dist = Math.hypot(coords.x - lastDot.x, coords.y - lastDot.y);
+
+            // Radius 15 allows easy finger grabbing
+            if (dist < 15) {
+                isDragging = true;
+            }
+        }
+
+        function handleMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const coords = getSVGCoordinates(e);
+            const prevDot = currentLevel.dots[nextDotIndex - 1];
+            const targetDot = currentLevel.dots[nextDotIndex];
+
+            const preview = document.getElementById('preview-line');
+            preview.setAttribute("x1", prevDot.x);
+            preview.setAttribute("y1", prevDot.y);
+            preview.setAttribute("x2", coords.x);
+            preview.setAttribute("y2", coords.y);
+            preview.style.display = "block";
+
+            const distToTarget = Math.hypot(coords.x - targetDot.x, coords.y - targetDot.y);
+
+            if (distToTarget < 10) { // Radius 10 for snap
+                connectDot(prevDot, targetDot);
+            }
+        }
+
+        function handleEnd() {
+            isDragging = false;
+            document.getElementById('preview-line').style.display = "none";
+        }
+
+        function connectDot(p1, p2) {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", p1.x);
+            line.setAttribute("y1", p1.y);
+            line.setAttribute("x2", p2.x);
+            line.setAttribute("y2", p2.y);
+            line.setAttribute("class", "connection-line");
+            document.getElementById('lines').appendChild(line);
+
+            if (navigator.vibrate) navigator.vibrate(15);
+
+            document.getElementById(`dot-${nextDotIndex}`).classList.add('connected');
+            nextDotIndex++;
+
+            if (nextDotIndex >= currentLevel.dots.length) {
+                // Close loop
+                const first = currentLevel.dots[0];
+                const last = currentLevel.dots[currentLevel.dots.length - 1];
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", last.x);
+                line.setAttribute("y1", last.y);
+                line.setAttribute("x2", first.x);
+                line.setAttribute("y2", first.y);
+                line.setAttribute("class", "connection-line");
+                document.getElementById('lines').appendChild(line);
+
+                winLevel();
+            } else {
+                updateTargetVisuals(nextDotIndex);
+            }
+        }
+
+        function winLevel() {
+            isDragging = false;
+            document.getElementById('preview-line').style.display = "none";
+
+            // Clean UI for nice reveal
+            document.querySelectorAll('.dot-number').forEach(el => {
+                el.className.baseVal = "dot-number";
+            });
+            document.querySelectorAll('.dot').forEach(el => {
+                el.className.baseVal = "dot connected"; // Keep dot visible but static
+            });
+
+            document.getElementById('final-shape').classList.add('finished');
+            if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+
+            setTimeout(() => {
+                loadRandomLevel();
+            }, 1500);
+        }
+
+        function updateTimer() {
+            const now = Date.now();
+            const diff = Math.floor((now - startTime) / 1000);
+
+            const minutes = Math.floor(diff / 60).toString().padStart(2, '0');
+            const seconds = (diff % 60).toString().padStart(2, '0');
+            timerEl.textContent = `${minutes}:${seconds}`;
+
+            if (diff > 0 && diff % 60 === 0) {
+                if (!timerEl.hasChimed) {
+                    playChimeSound();
+                    timerEl.hasChimed = true;
+                    if (navigator.vibrate) navigator.vibrate(500);
+                }
+            } else {
+                timerEl.hasChimed = false;
+            }
+        }
+
+        const board = document.getElementById('game-board');
+        board.addEventListener('touchstart', handleStart, { passive: false });
+        board.addEventListener('touchmove', handleMove, { passive: false });
+        board.addEventListener('touchend', handleEnd);
+
+        board.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+
+        setInterval(updateTimer, 1000);
+        loadRandomLevel();
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zen Physics Ball</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            touch-action: none;
+            /* Stops pull-to-refresh on mobile */
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.4);
+            pointer-events: none;
+            text-align: center;
+            user-select: none;
+            z-index: 2;
+            transition: opacity 0.5s;
+        }
+
+        #timer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 1.2rem;
+            font-weight: 300;
+            z-index: 2;
+            user-select: none;
+            pointer-events: none;
+            font-variant-numeric: tabular-nums;
+            /* Keeps numbers from jumping */
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="timer">00:00</div>
+
+    <div id="ui">
+        <h1>Spin & Fling</h1>
+        <p>Touch to unlock audio</p>
+    </div>
+    <div id="game-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+    <script>
+        // --- 1. AUDIO ENGINE (Web Audio API) ---
+        // No external MP3s needed! We generate sound mathematically.
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        let audioEnabled = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+                audioEnabled = true;
+
+                // Play a tiny silent note to unlock iOS audio
+                const buffer = audioCtx.createBuffer(1, 1, 22050);
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioCtx.destination);
+                source.start(0);
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playSoftThud(velocity) {
+            if (!audioEnabled) return;
+
+            // Volume based on impact speed (clamped 0.1 to 1.0)
+            const volume = Math.min(Math.max(velocity / 20, 0.1), 1.0);
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle'; // Softer than square, punchier than sine
+            osc.frequency.setValueAtTime(60, audioCtx.currentTime); // Low bass
+            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.1); // Pitch drop
+
+            gainNode.gain.setValueAtTime(volume * 0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15); // Fast decay
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        function playChime() {
+            if (!audioEnabled) return;
+
+            // Create a "magical" chord
+            const frequencies = [523.25, 659.25, 783.99, 1046.50]; // C Major chord
+            const now = audioCtx.currentTime;
+
+            frequencies.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+
+                // Stagger start times slightly for a "strum" effect
+                const startTime = now + (index * 0.1);
+
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.1, startTime + 0.05); // Attack
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 3.0); // Long tail
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(startTime);
+                osc.stop(startTime + 3.5);
+            });
+        }
+
+
+        // --- 2. TIMER LOGIC ---
+        let startTime = Date.now();
+        let lastMinutePlayed = 0;
+        const timerElement = document.getElementById('timer');
+
+        function updateTimer() {
+            const now = Date.now();
+            const diff = Math.floor((now - startTime) / 1000);
+
+            // Format mm:ss
+            const minutes = Math.floor(diff / 60);
+            const seconds = diff % 60;
+            const formatted =
+                (minutes < 10 ? "0" + minutes : minutes) + ":" +
+                (seconds < 10 ? "0" + seconds : seconds);
+
+            timerElement.textContent = formatted;
+
+            // Check for minute chime
+            if (minutes > 0 && minutes > lastMinutePlayed) {
+                playChime();
+                lastMinutePlayed = minutes;
+            }
+
+            requestAnimationFrame(updateTimer);
+        }
+
+        // Start timer loop
+        requestAnimationFrame(updateTimer);
+
+
+        // --- 3. PHYSICS ENGINE SETUP ---
+        const Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Bodies = Matter.Bodies,
+            Composite = Matter.Composite,
+            Mouse = Matter.Mouse,
+            MouseConstraint = Matter.MouseConstraint,
+            Events = Matter.Events,
+            Vector = Matter.Vector;
+
+        const engine = Engine.create({
+            positionIterations: 10,
+            velocityIterations: 10
+        });
+        const world = engine.world;
+        engine.gravity.y = 0.1;
+
+        const container = document.getElementById('game-container');
+        const render = Render.create({
+            element: container,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                background: '#1a1a1a',
+                wireframes: false,
+                pixelRatio: window.devicePixelRatio
+            }
+        });
+
+        const ballRadius = Math.min(window.innerWidth, window.innerHeight) * 0.08;
+        const ball = Bodies.circle(window.innerWidth / 2, window.innerHeight / 2, ballRadius, {
+            restitution: 0.9,
+            friction: 0.005,
+            frictionAir: 0.01,
+            density: 0.04,
+            label: 'Ball'
+        });
+
+        // Walls
+        let walls = [];
+        function createWalls() {
+            Composite.remove(world, walls);
+            const wallOptions = { isStatic: true, render: { fillStyle: '#333' }, label: 'Wall' };
+            const thickness = 2000;
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            walls = [
+                Bodies.rectangle(w / 2, -thickness / 2, w + thickness * 2, thickness, wallOptions),
+                Bodies.rectangle(w / 2, h + thickness / 2, w + thickness * 2, thickness, wallOptions),
+                Bodies.rectangle(w + thickness / 2, h / 2, thickness, h + thickness * 2, wallOptions),
+                Bodies.rectangle(-thickness / 2, h / 2, thickness, h + thickness * 2, wallOptions)
+            ];
+            Composite.add(world, walls);
+        }
+
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: { visible: true, lineWidth: 2, strokeStyle: '#ffffff' }
+            }
+        });
+
+        // Fix scroll and initialize audio on touch
+        mouse.element.removeEventListener("mousewheel", mouse.mousewheel);
+        mouse.element.removeEventListener("DOMMouseScroll", mouse.mousewheel);
+
+        // Use Matter.js mousedown event to init audio
+        Events.on(mouseConstraint, 'mousedown', function () {
+            initAudio();
+            const ui = document.getElementById('ui');
+            if (ui) ui.style.opacity = 0;
+        });
+
+        createWalls();
+        Composite.add(world, [ball, mouseConstraint]);
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // --- 4. COLLISION HANDLING (SOUND) ---
+        Events.on(engine, 'collisionStart', function (event) {
+            const pairs = event.pairs;
+
+            for (let i = 0; i < pairs.length; i++) {
+                const bodyA = pairs[i].bodyA;
+                const bodyB = pairs[i].bodyB;
+
+                // Check if Ball hit a Wall
+                if ((bodyA.label === 'Ball' && bodyB.label === 'Wall') ||
+                    (bodyB.label === 'Ball' && bodyA.label === 'Wall')) {
+
+                    // We can approximate impact force by the ball's current speed
+                    // (It's not perfect physics, but good enough for sound FX)
+                    if (ball.speed > 2) {
+                        playSoftThud(ball.speed);
+                    }
+
+                    // Optional: Tiny vibration on impact
+                    if (navigator.vibrate && ball.speed > 10) {
+                        navigator.vibrate(5);
+                    }
+                }
+            }
+        });
+
+        // --- SPEED CAP & BOUNDS CHECK ---
+        const MAX_SPEED = 45;
+        Events.on(engine, 'beforeUpdate', function () {
+            if (ball.speed > MAX_SPEED) {
+                const scale = MAX_SPEED / ball.speed;
+                Matter.Body.setVelocity(ball, {
+                    x: ball.velocity.x * scale,
+                    y: ball.velocity.y * scale
+                });
+            }
+            // Failsafe reset
+            const buffer = 100;
+            if (ball.position.x < -buffer || ball.position.x > window.innerWidth + buffer ||
+                ball.position.y < -buffer || ball.position.y > window.innerHeight + buffer) {
+                Matter.Body.setPosition(ball, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
+                Matter.Body.setVelocity(ball, { x: 0, y: 0 });
+            }
+        });
+
+        // --- VISUAL TRAIL ---
+        let trail = [];
+        Events.on(render, 'afterRender', function () {
+            trail.unshift({ x: ball.position.x, y: ball.position.y });
+            if (trail.length > 20) trail.pop();
+
+            const context = render.context;
+            context.beginPath();
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+
+            for (let i = 0; i < trail.length - 1; i++) {
+                const point = trail[i];
+                const nextPoint = trail[i + 1];
+                const alpha = 1 - (i / trail.length);
+                context.strokeStyle = `rgba(0, 255, 204, ${alpha * 0.5})`;
+                context.lineWidth = ballRadius * (alpha * 0.8);
+                context.beginPath();
+                context.moveTo(point.x, point.y);
+                context.lineTo(nextPoint.x, nextPoint.y);
+                context.stroke();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+            createWalls();
+            Matter.Body.setPosition(ball, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
+            Matter.Body.setVelocity(ball, { x: 0, y: 0 });
+        });
+    </script>
+</body>
+
+</html>
+```

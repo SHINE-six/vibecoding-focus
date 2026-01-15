@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Infinite Bubble Wrap</title>
+    <style>
+        :root {
+            --bubble-size: 60px;
+            --bg-color: #f0f4f8;
+            --bubble-color: #b8dfff;
+            --bubble-shadow: #8bbfe6;
+            --pop-color: #e2e8f0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            /* Prevent scrolling */
+            touch-action: none;
+            /* Prevent standard touch actions like zoom */
+            user-select: none;
+        }
+
+        /* Timer in Top Right */
+        #timer-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        /* Game Area */
+        #game-board {
+            display: grid;
+            gap: 15px;
+            padding: 20px;
+            transition: opacity 0.3s ease;
+        }
+
+        /* The Bubble */
+        .bubble {
+            width: var(--bubble-size);
+            height: var(--bubble-size);
+            background: radial-gradient(circle at 30% 30%, #fff, var(--bubble-color));
+            border-radius: 50%;
+            box-shadow:
+                0 4px 8px rgba(0, 0, 0, 0.1),
+                inset -5px -5px 10px var(--bubble-shadow);
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .bubble:active {
+            transform: scale(0.95);
+        }
+
+        /* Popped State */
+        .bubble.popped {
+            background: var(--pop-color);
+            box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.1);
+            transform: scale(0.9);
+            pointer-events: none;
+            /* Can't click again */
+        }
+
+        /* Visual tweak for the "popped" look */
+        .bubble.popped::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50%;
+            height: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 50%;
+        }
+
+        /* Empty space helper for shapes */
+        .spacer {
+            width: var(--bubble-size);
+            height: var(--bubble-size);
+            visibility: hidden;
+        }
+
+        /* Simple instruction at bottom */
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: #888;
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="timer-container">00:00</div>
+
+    <div id="game-board">
+        <!-- Bubbles will be injected here -->
+    </div>
+
+    <div id="hint">Turn on volume for ASMR</div>
+
+    <script>
+        // --- Game State ---
+        const board = document.getElementById('game-board');
+        const timerDisplay = document.getElementById('timer-container');
+        let totalBubbles = 0;
+        let poppedBubbles = 0;
+        let timeElapsed = 0; // seconds
+
+        // --- Audio Context Setup (For generating sounds without files) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        // --- Sound Generator Functions ---
+
+        // 1. The "Pop" Sound
+        function playPopSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle';
+            // Randomize pitch slightly for realism
+            osc.frequency.setValueAtTime(200 + Math.random() * 50, audioCtx.currentTime);
+            // Quick drop in pitch (the "thwip" sound)
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.1);
+
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        // 2. The "Chime" Sound (Every minute)
+        function playChime() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+
+            // Long fade out
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 2.5);
+        }
+
+        // --- Shapes Library (0 = empty, 1 = bubble) ---
+        const shapes = [
+            { // Square
+                grid: 3,
+                map: [1, 1, 1, 1, 1, 1, 1, 1, 1]
+            },
+            { // Heart
+                grid: 5,
+                map: [
+                    0, 1, 0, 1, 0,
+                    1, 1, 1, 1, 1,
+                    1, 1, 1, 1, 1,
+                    0, 1, 1, 1, 0,
+                    0, 0, 1, 0, 0
+                ]
+            },
+            { // Smiley
+                grid: 5,
+                map: [
+                    0, 1, 1, 1, 0,
+                    1, 1, 0, 1, 1,
+                    1, 0, 0, 0, 1,
+                    1, 1, 0, 1, 1,
+                    0, 1, 1, 1, 0
+                ]
+            },
+            { // X shape
+                grid: 3,
+                map: [1, 0, 1, 0, 1, 0, 1, 0, 1]
+            },
+            { // Diamond
+                grid: 5,
+                map: [
+                    0, 0, 1, 0, 0,
+                    0, 1, 1, 1, 0,
+                    1, 1, 1, 1, 1,
+                    0, 1, 1, 1, 0,
+                    0, 0, 1, 0, 0
+                ]
+            }
+        ];
+
+        // --- Game Logic ---
+
+        function loadLevel() {
+            // Fade out
+            board.style.opacity = '0';
+
+            setTimeout(() => {
+                board.innerHTML = ''; // Clear board
+                poppedBubbles = 0;
+
+                // Pick random shape
+                const shape = shapes[Math.floor(Math.random() * shapes.length)];
+
+                // Set CSS Grid columns
+                board.style.gridTemplateColumns = `repeat(${shape.grid}, var(--bubble-size))`;
+
+                totalBubbles = 0;
+
+                // Create Bubbles
+                shape.map.forEach(val => {
+                    if (val === 1) {
+                        createBubble();
+                        totalBubbles++;
+                    } else {
+                        createSpacer();
+                    }
+                });
+
+                // Fade in
+                board.style.opacity = '1';
+            }, 300);
+        }
+
+        function createBubble() {
+            const b = document.createElement('div');
+            b.classList.add('bubble');
+
+            // Interaction Event (Touch or Click)
+            b.addEventListener('pointerdown', (e) => {
+                if (b.classList.contains('popped')) return;
+
+                // Pop Logic
+                b.classList.add('popped');
+                playPopSound();
+                poppedBubbles++;
+
+                // Haptics (Vibrate 15ms)
+                if (navigator.vibrate) navigator.vibrate(15);
+
+                // Check Win
+                if (poppedBubbles === totalBubbles) {
+                    setTimeout(loadLevel, 500); // Wait 0.5s then reload
+                }
+            });
+
+            board.appendChild(b);
+        }
+
+        function createSpacer() {
+            const s = document.createElement('div');
+            s.classList.add('spacer');
+            board.appendChild(s);
+        }
+
+        // --- Timer Logic ---
+        function formatTime(s) {
+            const min = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        setInterval(() => {
+            timeElapsed++;
+            timerDisplay.innerText = formatTime(timeElapsed);
+
+            // Check if exactly on a minute mark (60, 120, etc)
+            if (timeElapsed > 0 && timeElapsed % 60 === 0) {
+                playChime();
+                // Visual indicator for chime
+                timerDisplay.style.backgroundColor = '#ffd700'; // Gold flash
+                setTimeout(() => timerDisplay.style.backgroundColor = 'white', 500);
+            }
+        }, 1000);
+
+        // --- Init ---
+        loadLevel();
+
+    </script>
+</body>
+
+</html>
