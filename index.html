@@ -98,18 +98,87 @@
             'game8.html'  // Snake
         ];
 
+        // ── Spotify / Apple Music–style shuffle queue ──
+        // Instead of pure Math.random() (which can repeat games frequently),
+        // we use a shuffled queue: all games play once before any repeats,
+        // just like shuffling a deck of cards. When the queue is exhausted
+        // we reshuffle, making sure the last-played game isn't first again.
+        // State is persisted in localStorage so it survives page reloads.
+
+        const STORAGE_KEY = 'shuffleState';
+
+        // Fisher-Yates (Knuth) shuffle – the same algorithm Spotify uses
+        function fisherYatesShuffle(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        // Build a new shuffled queue, ensuring `avoid` isn't the first item
+        function buildShuffleQueue(gamesList, avoid) {
+            let queue = fisherYatesShuffle(gamesList);
+            // If the first item in the new queue is the same as the last played,
+            // move it to a random later position so there's no back-to-back repeat
+            if (queue.length > 1 && queue[0] === avoid) {
+                const swapIdx = 1 + Math.floor(Math.random() * (queue.length - 1));
+                [queue[0], queue[swapIdx]] = [queue[swapIdx], queue[0]];
+            }
+            return queue;
+        }
+
+        // Restore persisted state or create fresh
+        function loadShuffleState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const state = JSON.parse(raw);
+                    // Validate: queue must match current games list and index in bounds
+                    const valid = Array.isArray(state.queue) &&
+                        state.queue.length === games.length &&
+                        state.queue.every(g => games.includes(g)) &&
+                        typeof state.index === 'number' &&
+                        state.index >= 0 && state.index <= state.queue.length;
+                    if (valid) {
+                        // Ensure lastPlayed is present and valid
+                        if (!state.lastPlayed || !games.includes(state.lastPlayed)) {
+                            state.lastPlayed = state.index > 0 ? state.queue[state.index - 1] : null;
+                        }
+                        return state;
+                    }
+                }
+            } catch (_) { /* ignore corrupt data */ }
+            return null;
+        }
+
+        function saveShuffleState(state) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } catch (_) { /* storage full / disabled – keep going */ }
+        }
+
+        // Initialise shuffle state
+        let shuffleState = loadShuffleState() || {
+            queue: buildShuffleQueue(games, null),
+            index: 0,
+            lastPlayed: null
+        };
+
         function loadRandomGame() {
             const frame = document.getElementById('game-frame');
 
-            // Pick a random game
-            let nextGame = games[Math.floor(Math.random() * games.length)];
-
-            // Optional: Prevent loading the same game twice in a row
-            // (Unless you only have 1 game right now)
-            if (games.length > 1 && frame.getAttribute('src') === nextGame) {
-                loadRandomGame();
-                return;
+            // If we've played through the whole queue, reshuffle
+            if (shuffleState.index >= shuffleState.queue.length) {
+                shuffleState.queue = buildShuffleQueue(games, shuffleState.lastPlayed);
+                shuffleState.index = 0;
             }
+
+            const nextGame = shuffleState.queue[shuffleState.index];
+            shuffleState.index++;
+            shuffleState.lastPlayed = nextGame;
+            saveShuffleState(shuffleState);
 
             frame.src = nextGame;
         }
