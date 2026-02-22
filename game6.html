@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simon Says</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #score-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 12px;
+            width: min(80vw, 80vh, 360px);
+            height: min(80vw, 80vh, 360px);
+            padding: 20px;
+        }
+
+        .pad {
+            border-radius: 20px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: filter 0.1s ease, transform 0.1s ease;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pad::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.2), transparent 60%);
+            border-radius: 20px;
+            pointer-events: none;
+        }
+
+        .pad.green {
+            background: #2ecc40;
+        }
+
+        .pad.red {
+            background: #e74c3c;
+        }
+
+        .pad.blue {
+            background: #3498db;
+        }
+
+        .pad.yellow {
+            background: #f1c40f;
+        }
+
+        .pad.lit {
+            filter: brightness(1.6);
+            transform: scale(0.96);
+        }
+
+        .pad.disabled {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        #status {
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1.2rem;
+            margin-top: 20px;
+            min-height: 2em;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+
+        .flash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .flash-overlay.fail {
+            background: rgba(231, 76, 60, 0.3);
+            opacity: 1;
+        }
+
+        .flash-overlay.success {
+            background: rgba(46, 204, 64, 0.15);
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="score-container">Level: 1</div>
+
+    <div id="game-board">
+        <div class="pad green disabled" data-color="green" data-index="0"></div>
+        <div class="pad red disabled" data-color="red" data-index="1"></div>
+        <div class="pad blue disabled" data-color="blue" data-index="2"></div>
+        <div class="pad yellow disabled" data-color="yellow" data-index="3"></div>
+    </div>
+
+    <div id="status">Watch the pattern...</div>
+
+    <div class="flash-overlay" id="flash-overlay"></div>
+
+    <div id="hint">Repeat the pattern by tapping the pads</div>
+
+    <script>
+        const pads = document.querySelectorAll('.pad');
+        const scoreDisplay = document.getElementById('score-container');
+        const statusDisplay = document.getElementById('status');
+        const flashOverlay = document.getElementById('flash-overlay');
+
+        let sequence = [];
+        let playerIndex = 0;
+        let level = 1;
+        let isPlaying = false;
+        let isShowingSequence = false;
+        let highestLevel = 1;
+
+        // Pad tones (frequencies for each color)
+        const padTones = {
+            0: 329.63,  // E4 - green
+            1: 261.63,  // C4 - red
+            2: 392.00,  // G4 - blue
+            3: 440.00   // A4 - yellow
+        };
+
+        // --- Audio Context Setup ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        // --- Sound: Pad Tone ---
+        function playPadTone(index, duration) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const freq = padTones[index];
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            const dur = duration || 0.3;
+            gainNode.gain.setValueAtTime(0.25, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur + 0.05);
+        }
+
+        // --- Sound: Fail ---
+        function playFailSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.4);
+
+            gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // --- Sound: Level Up ---
+        function playLevelUpSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const notes = [523.25, 659.25, 783.99];
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.1);
+
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime + i * 0.1);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.1 + 0.3);
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                osc.start(audioCtx.currentTime + i * 0.1);
+                osc.stop(audioCtx.currentTime + i * 0.1 + 0.35);
+            });
+        }
+
+        // --- Light Up a Pad ---
+        function lightPad(index, duration) {
+            const pad = pads[index];
+            pad.classList.add('lit');
+            playPadTone(index, duration);
+
+            setTimeout(() => {
+                pad.classList.remove('lit');
+            }, (duration || 0.3) * 1000);
+        }
+
+        // --- Show Sequence ---
+        function showSequence() {
+            isShowingSequence = true;
+            statusDisplay.textContent = 'Watch the pattern...';
+            disablePads();
+
+            let i = 0;
+            const speed = Math.max(300, 600 - level * 20);
+
+            function showNext() {
+                if (i >= sequence.length) {
+                    setTimeout(() => {
+                        isShowingSequence = false;
+                        enablePads();
+                        statusDisplay.textContent = 'Your turn!';
+                    }, speed);
+                    return;
+                }
+
+                lightPad(sequence[i], 0.3);
+                i++;
+                setTimeout(showNext, speed);
+            }
+
+            setTimeout(showNext, 500);
+        }
+
+        // --- Add to Sequence and Start Round ---
+        function nextRound() {
+            playerIndex = 0;
+            const next = Math.floor(Math.random() * 4);
+            sequence.push(next);
+            showSequence();
+        }
+
+        // --- Enable/Disable Pads ---
+        function enablePads() {
+            pads.forEach(p => p.classList.remove('disabled'));
+        }
+
+        function disablePads() {
+            pads.forEach(p => p.classList.add('disabled'));
+        }
+
+        // --- Handle Player Input ---
+        function handlePadPress(index) {
+            if (isShowingSequence) return;
+
+            lightPad(index, 0.2);
+            if (navigator.vibrate) navigator.vibrate(15);
+
+            if (sequence[playerIndex] === index) {
+                // Correct
+                playerIndex++;
+
+                if (playerIndex === sequence.length) {
+                    // Completed the sequence
+                    level++;
+                    if (level > highestLevel) highestLevel = level;
+                    scoreDisplay.textContent = `Level: ${level}`;
+
+                    playLevelUpSound();
+                    if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
+
+                    flashOverlay.className = 'flash-overlay success';
+                    setTimeout(() => flashOverlay.className = 'flash-overlay', 300);
+
+                    statusDisplay.textContent = 'Nice! Next round...';
+                    disablePads();
+
+                    setTimeout(nextRound, 1000);
+                }
+            } else {
+                // Wrong
+                playFailSound();
+                if (navigator.vibrate) navigator.vibrate([50, 30, 50, 30, 50]);
+
+                flashOverlay.className = 'flash-overlay fail';
+                setTimeout(() => flashOverlay.className = 'flash-overlay', 400);
+
+                statusDisplay.textContent = `Oops! You reached level ${level}. Starting over...`;
+                disablePads();
+
+                // Reset
+                sequence = [];
+                level = 1;
+                scoreDisplay.textContent = `Level: ${level}`;
+
+                setTimeout(nextRound, 1500);
+            }
+        }
+
+        // --- Attach Event Listeners ---
+        pads.forEach(pad => {
+            pad.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                const index = parseInt(pad.dataset.index);
+                handlePadPress(index);
+            });
+        });
+
+        // --- Init ---
+        setTimeout(nextRound, 800);
+
+    </script>
+</body>
+
+</html>
