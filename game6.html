@@ -25,21 +25,6 @@
             user-select: none;
         }
 
-        #timer-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 10px 20px;
-            border-radius: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            font-weight: bold;
-            font-size: 1.2rem;
-            color: #333;
-            z-index: 100;
-            pointer-events: none;
-        }
-
         #score-container {
             position: fixed;
             top: 20px;
@@ -156,7 +141,6 @@
 
 <body>
 
-    <div id="timer-container">00:00</div>
     <div id="score-container">Level: 1</div>
 
     <div id="game-board">
@@ -174,7 +158,6 @@
 
     <script>
         const pads = document.querySelectorAll('.pad');
-        const timerDisplay = document.getElementById('timer-container');
         const scoreDisplay = document.getElementById('score-container');
         const statusDisplay = document.getElementById('status');
         const flashOverlay = document.getElementById('flash-overlay');
@@ -184,7 +167,6 @@
         let level = 1;
         let isPlaying = false;
         let isShowingSequence = false;
-        let timeElapsed = 0;
         let highestLevel = 1;
 
         // Pad tones (frequencies for each color)
@@ -263,26 +245,6 @@
                 osc.start(audioCtx.currentTime + i * 0.1);
                 osc.stop(audioCtx.currentTime + i * 0.1 + 0.35);
             });
-        }
-
-        // --- Sound: Minute Chime ---
-        function playChime() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
-
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
-
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            osc.start();
-            osc.stop(audioCtx.currentTime + 2.5);
         }
 
         // --- Light Up a Pad ---
@@ -396,24 +358,6 @@
                 handlePadPress(index);
             });
         });
-
-        // --- Timer Logic ---
-        function formatTime(s) {
-            const min = Math.floor(s / 60);
-            const sec = s % 60;
-            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-        }
-
-        setInterval(() => {
-            timeElapsed++;
-            timerDisplay.innerText = formatTime(timeElapsed);
-
-            if (timeElapsed > 0 && timeElapsed % 60 === 0) {
-                playChime();
-                timerDisplay.style.backgroundColor = '#ffd700';
-                setTimeout(() => timerDisplay.style.backgroundColor = 'rgba(255, 255, 255, 0.9)', 500);
-            }
-        }, 1000);
 
         // --- Init ---
         setTimeout(nextRound, 800);
