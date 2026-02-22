@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Memory Card Match</title>
+    <style>
+        :root {
+            --bg-color: #eef2f7;
+            --card-back: #6c7ae0;
+            --card-front: #fff;
+            --card-matched: #a3e4a1;
+            --card-size: 70px;
+            --gap: 10px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* Timer in Top Right */
+        #timer-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        /* Game Board */
+        #game-board {
+            display: grid;
+            gap: var(--gap);
+            padding: 20px;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Card */
+        .card {
+            width: var(--card-size);
+            height: var(--card-size);
+            perspective: 600px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.4s ease;
+            transform-style: preserve-3d;
+        }
+
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-back {
+            background: linear-gradient(135deg, #6c7ae0, #8b5cf6);
+            box-shadow: 0 4px 8px rgba(108, 122, 224, 0.3);
+        }
+
+        .card-back::after {
+            content: '?';
+            font-size: 1.6rem;
+            color: rgba(255, 255, 255, 0.6);
+            font-weight: bold;
+        }
+
+        .card-front {
+            background: var(--card-front);
+            transform: rotateY(180deg);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            font-size: 2rem;
+        }
+
+        .card.matched .card-front {
+            background: var(--card-matched);
+            box-shadow: 0 4px 8px rgba(163, 228, 161, 0.4);
+        }
+
+        .card.matched .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        /* Hint at bottom */
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: #888;
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="timer-container">00:00</div>
+
+    <div id="game-board"></div>
+
+    <div id="hint">Flip cards to find matching pairs</div>
+
+    <script>
+        // --- Game Config ---
+        const board = document.getElementById('game-board');
+        const timerDisplay = document.getElementById('timer-container');
+
+        // Emoji pools for card symbols
+        const emojiPool = [
+            '🍎', '🍊', '🍋', '🍇', '🍉', '🍓', '🫐', '🍒',
+            '🌸', '🌻', '🌺', '🍀', '🌈', '⭐', '🌙', '🔥',
+            '🦋', '🐝', '🐢', '🐬', '🦊', '🐻', '🐼', '🐨',
+            '🎵', '🎨', '💎', '🧩', '🎈', '🪁', '🏀', '🎯'
+        ];
+
+        // Grid configurations (cols x rows = total cells, must be even for pairs)
+        const levels = [
+            { cols: 3, rows: 2 },   // 6 cards, 3 pairs
+            { cols: 4, rows: 3 },   // 12 cards, 6 pairs
+            { cols: 4, rows: 4 },   // 16 cards, 8 pairs
+            { cols: 5, rows: 4 },   // 20 cards, 10 pairs
+        ];
+
+        let flippedCards = [];
+        let matchedPairs = 0;
+        let totalPairs = 0;
+        let lockBoard = false;
+        let timeElapsed = 0;
+
+        // --- Audio Context Setup ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        // --- Sound: Card Flip ---
+        function playFlipSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800 + Math.random() * 100, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.08);
+
+            gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // --- Sound: Match Found ---
+        function playMatchSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const notes = [523.25, 659.25]; // C5, E5
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.12);
+
+                gainNode.gain.setValueAtTime(0.25, audioCtx.currentTime + i * 0.12);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.12 + 0.3);
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                osc.start(audioCtx.currentTime + i * 0.12);
+                osc.stop(audioCtx.currentTime + i * 0.12 + 0.35);
+            });
+        }
+
+        // --- Sound: Mismatch ---
+        function playMismatchSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
+
+            gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        // --- Sound: Level Complete ---
+        function playCompleteSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.15);
+
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime + i * 0.15);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.15 + 0.4);
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                osc.start(audioCtx.currentTime + i * 0.15);
+                osc.stop(audioCtx.currentTime + i * 0.15 + 0.45);
+            });
+        }
+
+        // --- Sound: Minute Chime ---
+        function playChime() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 2.5);
+        }
+
+        // --- Shuffle Array (Fisher-Yates) ---
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // --- Load Level ---
+        function loadLevel() {
+            board.style.opacity = '0';
+
+            setTimeout(() => {
+                board.innerHTML = '';
+                flippedCards = [];
+                matchedPairs = 0;
+                lockBoard = false;
+
+                // Pick a random level config
+                const level = levels[Math.floor(Math.random() * levels.length)];
+                totalPairs = (level.cols * level.rows) / 2;
+
+                // Pick random emojis for this round
+                const shuffledEmojis = shuffle([...emojiPool]);
+                const selectedEmojis = shuffledEmojis.slice(0, totalPairs);
+
+                // Create pairs and shuffle
+                const cardSymbols = shuffle([...selectedEmojis, ...selectedEmojis]);
+
+                // Set grid
+                board.style.gridTemplateColumns = `repeat(${level.cols}, var(--card-size))`;
+
+                // Create cards
+                cardSymbols.forEach(symbol => {
+                    createCard(symbol);
+                });
+
+                board.style.opacity = '1';
+            }, 300);
+        }
+
+        // --- Create a Card ---
+        function createCard(symbol) {
+            const card = document.createElement('div');
+            card.classList.add('card');
+            card.dataset.symbol = symbol;
+
+            card.innerHTML = `
+                <div class="card-inner">
+                    <div class="card-face card-back"></div>
+                    <div class="card-face card-front">${symbol}</div>
+                </div>
+            `;
+
+            card.addEventListener('pointerdown', () => handleCardClick(card));
+            board.appendChild(card);
+        }
+
+        // --- Handle Card Click ---
+        function handleCardClick(card) {
+            // Ignore if locked, already flipped, or already matched
+            if (lockBoard) return;
+            if (card.classList.contains('flipped')) return;
+            if (card.classList.contains('matched')) return;
+
+            // Flip card
+            card.classList.add('flipped');
+            playFlipSound();
+
+            // Haptic feedback
+            if (navigator.vibrate) navigator.vibrate(10);
+
+            flippedCards.push(card);
+
+            // Check for pair when two cards are flipped
+            if (flippedCards.length === 2) {
+                lockBoard = true;
+                checkMatch();
+            }
+        }
+
+        // --- Check Match ---
+        function checkMatch() {
+            const [card1, card2] = flippedCards;
+
+            if (card1.dataset.symbol === card2.dataset.symbol) {
+                // Match!
+                card1.classList.add('matched');
+                card2.classList.add('matched');
+                playMatchSound();
+
+                if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
+
+                matchedPairs++;
+                flippedCards = [];
+                lockBoard = false;
+
+                // Check win
+                if (matchedPairs === totalPairs) {
+                    playCompleteSound();
+                    setTimeout(loadLevel, 800);
+                }
+            } else {
+                // No match — flip back after a short delay
+                playMismatchSound();
+
+                setTimeout(() => {
+                    card1.classList.remove('flipped');
+                    card2.classList.remove('flipped');
+                    flippedCards = [];
+                    lockBoard = false;
+                }, 700);
+            }
+        }
+
+        // --- Timer Logic ---
+        function formatTime(s) {
+            const min = Math.floor(s / 60);
+            const sec = s % 60;
+            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        setInterval(() => {
+            timeElapsed++;
+            timerDisplay.innerText = formatTime(timeElapsed);
+
+            // Minute chime
+            if (timeElapsed > 0 && timeElapsed % 60 === 0) {
+                playChime();
+                timerDisplay.style.backgroundColor = '#ffd700';
+                setTimeout(() => timerDisplay.style.backgroundColor = 'white', 500);
+            }
+        }, 1000);
+
+        // --- Init ---
+        loadLevel();
+
+    </script>
+</body>
+
+</html>

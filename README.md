@@ -4,4 +4,11 @@ website: https://sunny-peony-bdaa99.netlify.app/
 
 if got sponsor wanted to buy the domain: vibecoding-focus.com, please open an issue
 
-if got better name suggestions, please open an issue, or even better yet, a PR.
+## Games
+
+1. **Spin & Fling** - Physics-based ball manipulation
+2. **Connect the Dots** - Drawing puzzle game
+3. **Infinite Bubble Wrap** - Satisfying bubble popping
+4. **Memory Card Match** - Flip cards to find matching emoji pairs
+
+if got better game suggestions, please open an issue, or even better yet, a PR.
