@@ -175,6 +175,43 @@
         });
 
         createWalls();
+
+        // --- OBSTACLE OBJECTS ---
+        const obstacles = [];
+        const obstacleCount = 8;
+        const obstacleSize = ballRadius * 0.35;
+
+        function createObstacles() {
+            // Remove old obstacles
+            Composite.remove(world, obstacles);
+            obstacles.length = 0;
+
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const margin = ballRadius * 2;
+
+            for (let i = 0; i < obstacleCount; i++) {
+                const x = margin + Math.random() * (w - margin * 2);
+                const y = margin + Math.random() * (h - margin * 2);
+                const sides = 3 + Math.floor(Math.random() * 4); // 3-6 sided polygons
+                const hue = Math.floor(Math.random() * 360);
+
+                const obstacle = Bodies.polygon(x, y, sides, obstacleSize, {
+                    restitution: 0.8,
+                    friction: 0.01,
+                    frictionAir: 0.02,
+                    density: 0.01,
+                    label: 'Obstacle',
+                    render: {
+                        fillStyle: `hsl(${hue}, 70%, 60%)`
+                    }
+                });
+                obstacles.push(obstacle);
+            }
+            Composite.add(world, obstacles);
+        }
+
+        createObstacles();
         Composite.add(world, [ball, mouseConstraint]);
         Render.run(render);
         const runner = Runner.create();
@@ -192,15 +229,21 @@
                 if ((bodyA.label === 'Ball' && bodyB.label === 'Wall') ||
                     (bodyB.label === 'Ball' && bodyA.label === 'Wall')) {
 
-                    // We can approximate impact force by the ball's current speed
-                    // (It's not perfect physics, but good enough for sound FX)
                     if (ball.speed > 2) {
                         playSoftThud(ball.speed);
                     }
 
-                    // Optional: Tiny vibration on impact
                     if (navigator.vibrate && ball.speed > 10) {
                         navigator.vibrate(5);
+                    }
+                }
+
+                // Check if Ball hit an Obstacle
+                if ((bodyA.label === 'Ball' && bodyB.label === 'Obstacle') ||
+                    (bodyB.label === 'Ball' && bodyA.label === 'Obstacle')) {
+
+                    if (ball.speed > 1) {
+                        playSoftThud(ball.speed * 0.6);
                     }
                 }
             }
@@ -222,6 +265,30 @@
                 ball.position.y < -buffer || ball.position.y > window.innerHeight + buffer) {
                 Matter.Body.setPosition(ball, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
                 Matter.Body.setVelocity(ball, { x: 0, y: 0 });
+            }
+
+            // Counteract gravity for obstacles so they float in place
+            const gx = engine.gravity.x * engine.gravity.scale;
+            const gy = engine.gravity.y * engine.gravity.scale;
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+            const margin = ballRadius * 2;
+            for (let i = 0; i < obstacles.length; i++) {
+                const ob = obstacles[i];
+                Matter.Body.applyForce(ob, ob.position, {
+                    x: -gx * ob.mass,
+                    y: -gy * ob.mass
+                });
+                // Reset obstacles that fly out of bounds
+                if (ob.position.x < -buffer || ob.position.x > winW + buffer ||
+                    ob.position.y < -buffer || ob.position.y > winH + buffer) {
+                    Matter.Body.setPosition(ob, {
+                        x: margin + Math.random() * (winW - margin * 2),
+                        y: margin + Math.random() * (winH - margin * 2)
+                    });
+                    Matter.Body.setVelocity(ob, { x: 0, y: 0 });
+                    Matter.Body.setAngularVelocity(ob, 0);
+                }
             }
         });
 
@@ -253,6 +320,7 @@
             render.canvas.width = window.innerWidth;
             render.canvas.height = window.innerHeight;
             createWalls();
+            createObstacles();
             Matter.Body.setPosition(ball, { x: window.innerWidth / 2, y: window.innerHeight / 2 });
             Matter.Body.setVelocity(ball, { x: 0, y: 0 });
         });
