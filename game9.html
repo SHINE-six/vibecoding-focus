@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Penalty Kick</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2e7d32;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #score-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+            pointer-events: none;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+
+        #message {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        #message.show {
+            display: flex;
+        }
+
+        #message h2 {
+            color: white;
+            font-size: clamp(2rem, 6vw, 3rem);
+            margin: 0;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        #message p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="score-container">⚽ 0 - 0 🧤</div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="message">
+        <h2 id="msg-text">GOAL!</h2>
+        <p>Tap to kick again</p>
+    </div>
+
+    <div id="hint">Tap where you want to kick</div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-container');
+        const messageScreen = document.getElementById('message');
+        const msgText = document.getElementById('msg-text');
+
+        // --- Canvas Setup ---
+        let W, H;
+
+        function resizeCanvas() {
+            const maxW = Math.min(window.innerWidth * 0.95, 500);
+            const maxH = Math.min(window.innerHeight * 0.8, 700);
+            W = Math.floor(maxW);
+            H = Math.floor(maxH);
+            canvas.width = W;
+            canvas.height = H;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            initPositions();
+            draw();
+        });
+
+        // --- Audio ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioCtx();
+
+        function playKickSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.25);
+        }
+
+        function playGoalSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const freqs = [523.25, 659.25, 783.99, 1046.50];
+            freqs.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                const t = audioCtx.currentTime + i * 0.08;
+                gain.gain.setValueAtTime(0, t);
+                gain.gain.linearRampToValueAtTime(0.15, t + 0.04);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(t);
+                osc.stop(t + 1.2);
+            });
+        }
+
+        function playSaveSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.4);
+        }
+
+        // --- Game State ---
+        let goals = 0;
+        let saves = 0;
+        let state = 'aiming'; // 'aiming', 'shooting', 'result'
+
+        // Field dimensions (relative to canvas)
+        let goalY, goalW, goalH, goalX;
+        let postW;
+        let ballStartX, ballStartY, ballRadius;
+
+        // Goalkeeper
+        let gkX, gkY, gkW, gkH;
+        let gkSpeed, gkDir;
+        let gkTurnPoint; // random turning point offset
+        let gkMinX, gkMaxX;
+
+        // Ball
+        let ballX, ballY;
+        let ballTargetX, ballTargetY;
+        let ballVX, ballVY;
+        let ballFlying = false;
+
+        function initPositions() {
+            // Goal
+            goalW = W * 0.55;
+            goalH = H * 0.08;
+            goalX = (W - goalW) / 2;
+            goalY = H * 0.1;
+            postW = W * 0.02;
+
+            // Ball
+            ballRadius = Math.min(W, H) * 0.025;
+            ballStartX = W / 2;
+            ballStartY = H * 0.82;
+
+            // Goalkeeper
+            gkW = W * 0.1;
+            gkH = H * 0.055;
+            gkY = goalY + goalH * 0.3;
+            gkMinX = goalX + postW;
+            gkMaxX = goalX + goalW - postW - gkW;
+            gkSpeed = W * 0.003 + Math.random() * W * 0.001;
+            gkDir = 1;
+            gkTurnPoint = 0;
+            resetGKTurnPoint();
+        }
+
+        function resetGKTurnPoint() {
+            // Add randomness: goalkeeper may turn early or late
+            gkTurnPoint = (Math.random() - 0.5) * goalW * 0.25;
+        }
+
+        function resetBall() {
+            ballX = ballStartX;
+            ballY = ballStartY;
+            ballVX = 0;
+            ballVY = 0;
+            ballFlying = false;
+        }
+
+        function resetForKick() {
+            state = 'aiming';
+            resetBall();
+            messageScreen.classList.remove('show');
+        }
+
+        initPositions();
+        resetBall();
+
+        // --- Goalkeeper Movement ---
+        function updateGoalkeeper() {
+            if (gkX === undefined) gkX = (gkMinX + gkMaxX) / 2;
+
+            gkX += gkSpeed * gkDir;
+
+            // Turn around with randomness offset
+            const leftBound = gkMinX + gkTurnPoint;
+            const rightBound = gkMaxX + gkTurnPoint;
+
+            if (gkX <= Math.max(gkMinX, leftBound)) {
+                gkX = Math.max(gkMinX, leftBound);
+                gkDir = 1;
+                gkSpeed = W * 0.003 + Math.random() * W * 0.002;
+                resetGKTurnPoint();
+            }
+            if (gkX >= Math.min(gkMaxX, rightBound)) {
+                gkX = Math.min(gkMaxX, rightBound);
+                gkDir = -1;
+                gkSpeed = W * 0.003 + Math.random() * W * 0.002;
+                resetGKTurnPoint();
+            }
+        }
+
+        // --- Ball Update ---
+        function updateBall() {
+            if (!ballFlying) return;
+
+            ballX += ballVX;
+            ballY += ballVY;
+
+            // Check if ball reached goal line
+            if (ballY <= goalY + goalH) {
+                ballFlying = false;
+
+                // Check if it's within the goal posts
+                const inGoal = ballX > goalX + postW && ballX < goalX + goalW - postW;
+
+                if (inGoal) {
+                    // Check goalkeeper save
+                    const gkCenterX = gkX + gkW / 2;
+                    const gkReach = gkW * 0.6;
+                    const saved = Math.abs(ballX - gkCenterX) < gkReach;
+
+                    if (saved) {
+                        saves++;
+                        playSaveSound();
+                        showMessage('SAVED! 🧤');
+                    } else {
+                        goals++;
+                        playGoalSound();
+                        showMessage('GOAL! ⚽');
+                        if (navigator.vibrate) navigator.vibrate(200);
+                    }
+                } else {
+                    saves++;
+                    playSaveSound();
+                    showMessage('MISS! 😬');
+                }
+
+                updateScore();
+
+                setTimeout(() => {
+                    resetForKick();
+                }, 1800);
+            }
+        }
+
+        function showMessage(text) {
+            state = 'result';
+            msgText.textContent = text;
+            messageScreen.classList.add('show');
+        }
+
+        function updateScore() {
+            scoreDisplay.textContent = `⚽ ${goals} - ${saves} 🧤`;
+        }
+
+        // --- Draw ---
+        function draw() {
+            // Grass background
+            ctx.fillStyle = '#388e3c';
+            ctx.fillRect(0, 0, W, H);
+
+            // Field lines
+            drawField();
+
+            // Goal
+            drawGoal();
+
+            // Goalkeeper
+            drawGoalkeeper();
+
+            // Ball
+            drawBall();
+
+            // Aim guide when aiming
+            if (state === 'aiming') {
+                drawAimGuide();
+            }
+        }
+
+        function drawField() {
+            // Grass stripes
+            const stripeH = H * 0.06;
+            for (let i = 0; i < H; i += stripeH * 2) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+                ctx.fillRect(0, i, W, stripeH);
+            }
+
+            // Penalty area box
+            const boxW = goalW * 1.4;
+            const boxH = H * 0.35;
+            const boxX = (W - boxW) / 2;
+            const boxY = goalY;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+            // Penalty spot
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.arc(ballStartX, ballStartY, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Center line at penalty area top
+            const arcR = boxW * 0.25;
+            ctx.beginPath();
+            ctx.arc(W / 2, boxY + boxH, arcR, Math.PI, 0, true);
+            ctx.stroke();
+        }
+
+        function drawGoal() {
+            // Goal net (background)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fillRect(goalX + postW, goalY, goalW - 2 * postW, goalH);
+
+            // Net pattern
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.lineWidth = 1;
+            const netSpacing = goalW * 0.04;
+            for (let x = goalX + postW; x < goalX + goalW - postW; x += netSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(x, goalY);
+                ctx.lineTo(x, goalY + goalH);
+                ctx.stroke();
+            }
+            for (let y = goalY; y < goalY + goalH; y += netSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(goalX + postW, y);
+                ctx.lineTo(goalX + goalW - postW, y);
+                ctx.stroke();
+            }
+
+            // Goal posts
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(goalX, goalY, postW, goalH + 4);
+            ctx.fillRect(goalX + goalW - postW, goalY, postW, goalH + 4);
+
+            // Crossbar
+            ctx.fillRect(goalX, goalY - 3, goalW, 5);
+
+            // Post shadows
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(goalX + postW, goalY, 3, goalH);
+            ctx.fillRect(goalX + goalW - postW - 3, goalY, 3, goalH);
+        }
+
+        function drawGoalkeeper() {
+            if (gkX === undefined) return;
+
+            // Body
+            ctx.fillStyle = '#ffeb3b';
+            ctx.beginPath();
+            ctx.roundRect(gkX, gkY, gkW, gkH, 6);
+            ctx.fill();
+
+            // Jersey number
+            ctx.fillStyle = '#333';
+            ctx.font = `bold ${gkH * 0.5}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('1', gkX + gkW / 2, gkY + gkH / 2);
+
+            // Arms (extended)
+            const armW = gkW * 0.25;
+            const armH = gkH * 0.3;
+            ctx.fillStyle = '#ffc107';
+            ctx.fillRect(gkX - armW, gkY + gkH * 0.2, armW, armH);
+            ctx.fillRect(gkX + gkW, gkY + gkH * 0.2, armW, armH);
+
+            // Gloves
+            ctx.fillStyle = '#ff5722';
+            ctx.beginPath();
+            ctx.arc(gkX - armW, gkY + gkH * 0.35, armH * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(gkX + gkW + armW, gkY + gkH * 0.35, armH * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawBall() {
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.beginPath();
+            ctx.ellipse(ballX + 2, ballY + 2, ballRadius, ballRadius * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ball
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ball pattern (pentagon shapes)
+            ctx.fillStyle = '#333';
+            const ps = ballRadius * 0.3;
+            for (let i = 0; i < 5; i++) {
+                const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+                const px = ballX + Math.cos(angle) * ballRadius * 0.5;
+                const py = ballY + Math.sin(angle) * ballRadius * 0.5;
+                ctx.beginPath();
+                ctx.arc(px, py, ps, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Ball highlight
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(ballX - ballRadius * 0.25, ballY - ballRadius * 0.25, ballRadius * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawAimGuide() {
+            // Subtle dotted line from ball to top
+            ctx.setLineDash([4, 8]);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(ballStartX, ballStartY);
+            ctx.lineTo(ballStartX, goalY + goalH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // --- Kick Logic ---
+        function kick(targetX) {
+            if (state !== 'aiming') return;
+
+            state = 'shooting';
+            playKickSound();
+            if (navigator.vibrate) navigator.vibrate(30);
+
+            // Clamp target to within goal area (with small margin)
+            const margin = goalW * 0.05;
+            ballTargetX = Math.max(goalX + margin, Math.min(goalX + goalW - margin, targetX));
+            ballTargetY = goalY + goalH * 0.5;
+
+            // Calculate velocity
+            const dx = ballTargetX - ballX;
+            const dy = ballTargetY - ballY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const speed = dist * 0.06;
+            ballVX = (dx / dist) * speed;
+            ballVY = (dy / dist) * speed;
+
+            ballFlying = true;
+        }
+
+        // --- Input Handling ---
+        function handleInput(clientX, clientY) {
+            if (state === 'result') return;
+            if (state !== 'aiming') return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (clientX - rect.left) * (W / rect.width);
+
+            kick(x);
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            handleInput(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                handleInput(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        document.addEventListener('keydown', (e) => {
+            if (state !== 'aiming') return;
+
+            if (e.key === 'ArrowLeft' || e.key === 'a') {
+                kick(goalX + goalW * 0.2);
+            } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                kick(goalX + goalW * 0.8);
+            } else if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+                kick(goalX + goalW * 0.5);
+            }
+        });
+
+        // --- Game Loop ---
+        function gameLoop() {
+            updateGoalkeeper();
+            updateBall();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gkX = (gkMinX + gkMaxX) / 2;
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+
+</html>
