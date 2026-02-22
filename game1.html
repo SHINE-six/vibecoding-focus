@@ -178,7 +178,6 @@
 
         // --- OBSTACLE OBJECTS ---
         const obstacles = [];
-        const obstacleCount = 8;
         const obstacleSize = ballRadius * 0.35;
 
         function createObstacles() {
@@ -186,6 +185,7 @@
             Composite.remove(world, obstacles);
             obstacles.length = 0;
 
+            const obstacleCount = 3 + Math.floor(Math.random() * 6); // 3-8 obstacles
             const w = window.innerWidth;
             const h = window.innerHeight;
             const margin = ballRadius * 2;
