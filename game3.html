@@ -31,22 +31,6 @@
             user-select: none;
         }
 
-        /* Timer in Top Right */
-        #timer-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: white;
-            padding: 10px 20px;
-            border-radius: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            font-weight: bold;
-            font-size: 1.2rem;
-            color: #333;
-            z-index: 100;
-            pointer-events: none;
-        }
-
         /* Game Area */
         #game-board {
             display: grid;
@@ -116,8 +100,6 @@
 
 <body>
 
-    <div id="timer-container">00:00</div>
-
     <div id="game-board">
         <!-- Bubbles will be injected here -->
     </div>
@@ -127,10 +109,8 @@
     <script>
         // --- Game State ---
         const board = document.getElementById('game-board');
-        const timerDisplay = document.getElementById('timer-container');
         let totalBubbles = 0;
         let poppedBubbles = 0;
-        let timeElapsed = 0; // seconds
 
         // --- Audio Context Setup (For generating sounds without files) ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -159,27 +139,6 @@
 
             osc.start();
             osc.stop(audioCtx.currentTime + 0.15);
-        }
-
-        // 2. The "Chime" Sound (Every minute)
-        function playChime() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-
-            // Long fade out
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
-
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            osc.start();
-            osc.stop(audioCtx.currentTime + 2.5);
         }
 
         // --- Shapes Library (0 = empty, 1 = bubble) ---
@@ -288,30 +247,7 @@
             board.appendChild(s);
         }
 
-        // --- Timer Logic ---
-        function formatTime(s) {
-            const min = Math.floor(s / 60);
-            const sec = s % 60;
-            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-        }
-
-        setInterval(() => {
-            timeElapsed++;
-            timerDisplay.innerText = formatTime(timeElapsed);
-
-            // Check if exactly on a minute mark (60, 120, etc)
-            if (timeElapsed > 0 && timeElapsed % 60 === 0) {
-                playChime();
-                // Visual indicator for chime
-                timerDisplay.style.backgroundColor = '#ffd700'; // Gold flash
-                setTimeout(() => timerDisplay.style.backgroundColor = 'white', 500);
-            }
-        }, 1000);
-
         // --- Init ---
         loadLevel();
 
     </script>
-</body>
-
-</html>

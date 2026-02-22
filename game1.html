@@ -37,26 +37,10 @@
             z-index: 2;
             transition: opacity 0.5s;
         }
-
-        #timer {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 1.2rem;
-            font-weight: 300;
-            z-index: 2;
-            user-select: none;
-            pointer-events: none;
-            font-variant-numeric: tabular-nums;
-            /* Keeps numbers from jumping */
-        }
     </style>
 </head>
 
 <body>
-
-    <div id="timer">00:00</div>
 
     <div id="ui">
         <h1>Spin & Fling</h1>
@@ -112,67 +96,6 @@
             osc.stop(audioCtx.currentTime + 0.2);
         }
 
-        function playChime() {
-            if (!audioEnabled) return;
-
-            // Create a "magical" chord
-            const frequencies = [523.25, 659.25, 783.99, 1046.50]; // C Major chord
-            const now = audioCtx.currentTime;
-
-            frequencies.forEach((freq, index) => {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-
-                osc.type = 'sine';
-                osc.frequency.value = freq;
-
-                // Stagger start times slightly for a "strum" effect
-                const startTime = now + (index * 0.1);
-
-                gain.gain.setValueAtTime(0, startTime);
-                gain.gain.linearRampToValueAtTime(0.1, startTime + 0.05); // Attack
-                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 3.0); // Long tail
-
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-
-                osc.start(startTime);
-                osc.stop(startTime + 3.5);
-            });
-        }
-
-
-        // --- 2. TIMER LOGIC ---
-        let startTime = Date.now();
-        let lastMinutePlayed = 0;
-        const timerElement = document.getElementById('timer');
-
-        function updateTimer() {
-            const now = Date.now();
-            const diff = Math.floor((now - startTime) / 1000);
-
-            // Format mm:ss
-            const minutes = Math.floor(diff / 60);
-            const seconds = diff % 60;
-            const formatted =
-                (minutes < 10 ? "0" + minutes : minutes) + ":" +
-                (seconds < 10 ? "0" + seconds : seconds);
-
-            timerElement.textContent = formatted;
-
-            // Check for minute chime
-            if (minutes > 0 && minutes > lastMinutePlayed) {
-                playChime();
-                lastMinutePlayed = minutes;
-            }
-
-            requestAnimationFrame(updateTimer);
-        }
-
-        // Start timer loop
-        requestAnimationFrame(updateTimer);
-
-
         // --- 3. PHYSICS ENGINE SETUP ---
         const Engine = Matter.Engine,
             Render = Matter.Render,
@@ -189,7 +112,7 @@
             velocityIterations: 10
         });
         const world = engine.world;
-        engine.gravity.y = 0.1;
+        engine.gravity.y = 0.3;
 
         const container = document.getElementById('game-container');
         const render = Render.create({

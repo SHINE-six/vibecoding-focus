@@ -37,22 +37,12 @@
             width: 100%;
             height: 60px;
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             padding: 0 20px;
             box-sizing: border-box;
             pointer-events: none;
             z-index: 10;
-        }
-
-        #timer {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: var(--text-color);
-            background: rgba(255, 255, 255, 0.9);
-            padding: 5px 10px;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
         }
 
         #game-board {
@@ -177,7 +167,6 @@
 
     <div id="ui-layer">
         <span style="font-size: 0.9rem; color: #888;">Connect the dots</span>
-        <div id="timer">00:00</div>
     </div>
 
     <div id="game-board">
@@ -253,11 +242,9 @@
         let currentLevelIndex = -1;
         let nextDotIndex = 1;
         let isDragging = false;
-        let startTime = Date.now();
         let audioCtx = null;
 
         const svgArea = document.getElementById('svg-area');
-        const timerEl = document.getElementById('timer');
 
         function initAudio() {
             if (!audioCtx) {
@@ -277,20 +264,6 @@
             gain.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.1);
-        }
-
-        function playChimeSound() {
-            if (!audioCtx) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 1.5);
         }
 
         function loadRandomLevel() {
@@ -510,25 +483,6 @@
             }, 1500);
         }
 
-        function updateTimer() {
-            const now = Date.now();
-            const diff = Math.floor((now - startTime) / 1000);
-
-            const minutes = Math.floor(diff / 60).toString().padStart(2, '0');
-            const seconds = (diff % 60).toString().padStart(2, '0');
-            timerEl.textContent = `${minutes}:${seconds}`;
-
-            if (diff > 0 && diff % 60 === 0) {
-                if (!timerEl.hasChimed) {
-                    playChimeSound();
-                    timerEl.hasChimed = true;
-                    if (navigator.vibrate) navigator.vibrate(500);
-                }
-            } else {
-                timerEl.hasChimed = false;
-            }
-        }
-
         const board = document.getElementById('game-board');
         board.addEventListener('touchstart', handleStart, { passive: false });
         board.addEventListener('touchmove', handleMove, { passive: false });
@@ -538,7 +492,6 @@
         window.addEventListener('mousemove', handleMove);
         window.addEventListener('mouseup', handleEnd);
 
-        setInterval(updateTimer, 1000);
         loadRandomLevel();
 
     </script>

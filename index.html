@@ -49,10 +49,31 @@
             background: rgba(255, 255, 255, 0.4);
             transform: scale(0.95);
         }
+
+        #timer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.2rem;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-weight: 300;
+            z-index: 10000;
+            user-select: none;
+            pointer-events: none;
+            font-variant-numeric: tabular-nums;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px 12px;
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
     </style>
 </head>
 
 <body>
+
+    <div id="timer">00:00</div>
 
     <!-- The Game Screen -->
     <iframe id="game-frame" src=""></iframe>
@@ -86,6 +107,93 @@
 
         // Load one immediately on startup
         loadRandomGame();
+
+        // --- TIMER & AUDIO LOGIC ---
+        const timerElement = document.getElementById('timer');
+        let startTime = Date.now();
+        let lastMinutePlayed = 0;
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+                
+                // Play silent sound to trigger state change
+                const buffer = audioCtx.createBuffer(1, 1, 22050);
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioCtx.destination);
+                source.start(0);
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playChime() {
+            if (!audioCtx) return;
+
+            // Create a "magical" chord - combined from game1/3 logic
+            const frequencies = [523.25, 659.25, 783.99, 1046.50]; // C Major chord
+            const now = audioCtx.currentTime;
+
+            frequencies.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine'; // Sine is cleanest for UI sounds
+                osc.frequency.value = freq;
+
+                // Stagger start times slightly for a "strum" effect
+                const start = now + (index * 0.05);
+
+                gain.gain.setValueAtTime(0, start);
+                gain.gain.linearRampToValueAtTime(0.1, start + 0.05); // Attack
+                gain.gain.exponentialRampToValueAtTime(0.001, start + 2.0); // Long tail
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(start);
+                osc.stop(start + 2.5);
+            });
+
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
+
+        function updateTimer() {
+            const now = Date.now();
+            const diff = Math.floor((now - startTime) / 1000);
+
+            // Format mm:ss
+            const minutes = Math.floor(diff / 60);
+            const seconds = diff % 60;
+            const formatted =
+                (minutes < 10 ? "0" + minutes : minutes) + ":" +
+                (seconds < 10 ? "0" + seconds : seconds);
+
+            if (timerElement) timerElement.textContent = formatted;
+
+            // Check for minute chime
+            if (minutes > 0 && minutes > lastMinutePlayed) {
+                playChime();
+                lastMinutePlayed = minutes;
+            }
+
+            requestAnimationFrame(updateTimer);
+        }
+
+        // Initialize audio on interactions
+        ['click', 'touchstart', 'keydown'].forEach(e => 
+            window.addEventListener(e, initAudio, { once: true })
+        );
+        
+        // Also attach to refresh button specifically
+        document.getElementById('refresh-btn').addEventListener('click', initAudio);
+
+        // Start timer loop
+        requestAnimationFrame(updateTimer);
     </script>
 </body>
 
