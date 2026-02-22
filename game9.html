@@ -207,7 +207,7 @@
             postW = W * 0.02;
 
             // Ball
-            ballRadius = Math.min(W, H) * 0.025;
+            ballRadius = Math.min(W, H) * 0.035;
             ballStartX = W / 2;
             ballStartY = H * 0.82;
 
@@ -249,23 +249,35 @@
         function updateGoalkeeper() {
             if (gkX === undefined) gkX = (gkMinX + gkMaxX) / 2;
 
-            gkX += gkSpeed * gkDir;
+            if (ballFlying) {
+                // React to the ball: move towards the target position
+                const targetGkX = Math.max(gkMinX, Math.min(gkMaxX, ballTargetX - gkW / 2));
+                const reactionSpeed = W * 0.012;
+                if (gkX < targetGkX) {
+                    gkX = Math.min(gkX + reactionSpeed, targetGkX);
+                } else if (gkX > targetGkX) {
+                    gkX = Math.max(gkX - reactionSpeed, targetGkX);
+                }
+            } else {
+                // Patrol randomly when ball is not in flight
+                gkX += gkSpeed * gkDir;
 
-            // Turn around with randomness offset
-            const leftBound = gkMinX + gkTurnPoint;
-            const rightBound = gkMaxX + gkTurnPoint;
+                // Turn around with randomness offset
+                const leftBound = gkMinX + gkTurnPoint;
+                const rightBound = gkMaxX + gkTurnPoint;
 
-            if (gkX <= Math.max(gkMinX, leftBound)) {
-                gkX = Math.max(gkMinX, leftBound);
-                gkDir = 1;
-                gkSpeed = W * 0.003 + Math.random() * W * 0.002;
-                resetGKTurnPoint();
-            }
-            if (gkX >= Math.min(gkMaxX, rightBound)) {
-                gkX = Math.min(gkMaxX, rightBound);
-                gkDir = -1;
-                gkSpeed = W * 0.003 + Math.random() * W * 0.002;
-                resetGKTurnPoint();
+                if (gkX <= Math.max(gkMinX, leftBound)) {
+                    gkX = Math.max(gkMinX, leftBound);
+                    gkDir = 1;
+                    gkSpeed = W * 0.003 + Math.random() * W * 0.002;
+                    resetGKTurnPoint();
+                }
+                if (gkX >= Math.min(gkMaxX, rightBound)) {
+                    gkX = Math.min(gkMaxX, rightBound);
+                    gkDir = -1;
+                    gkSpeed = W * 0.003 + Math.random() * W * 0.002;
+                    resetGKTurnPoint();
+                }
             }
         }
 
@@ -507,7 +519,7 @@
             const dx = ballTargetX - ballX;
             const dy = ballTargetY - ballY;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            const speed = dist * 0.06;
+            const speed = dist * 0.04;
             ballVX = (dx / dist) * speed;
             ballVY = (dy / dist) * speed;
 
