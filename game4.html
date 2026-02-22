@@ -30,22 +30,6 @@
             user-select: none;
         }
 
-        /* Timer in Top Right */
-        #timer-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: white;
-            padding: 10px 20px;
-            border-radius: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            font-weight: bold;
-            font-size: 1.2rem;
-            color: #333;
-            z-index: 100;
-            pointer-events: none;
-        }
-
         /* Game Board */
         #game-board {
             display: grid;
@@ -127,8 +111,6 @@
 
 <body>
 
-    <div id="timer-container">00:00</div>
-
     <div id="game-board"></div>
 
     <div id="hint">Flip cards to find matching pairs</div>
@@ -136,7 +118,6 @@
     <script>
         // --- Game Config ---
         const board = document.getElementById('game-board');
-        const timerDisplay = document.getElementById('timer-container');
 
         // Emoji pools for card symbols
         const emojiPool = [
@@ -158,8 +139,6 @@
         let matchedPairs = 0;
         let totalPairs = 0;
         let lockBoard = false;
-        let timeElapsed = 0;
-
         // --- Audio Context Setup ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
@@ -250,26 +229,6 @@
                 osc.start(audioCtx.currentTime + i * 0.15);
                 osc.stop(audioCtx.currentTime + i * 0.15 + 0.45);
             });
-        }
-
-        // --- Sound: Minute Chime ---
-        function playChime() {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
-
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            osc.start();
-            osc.stop(audioCtx.currentTime + 2.5);
         }
 
         // --- Shuffle Array (Fisher-Yates) ---
@@ -387,25 +346,6 @@
                 }, 700);
             }
         }
-
-        // --- Timer Logic ---
-        function formatTime(s) {
-            const min = Math.floor(s / 60);
-            const sec = s % 60;
-            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-        }
-
-        setInterval(() => {
-            timeElapsed++;
-            timerDisplay.innerText = formatTime(timeElapsed);
-
-            // Minute chime
-            if (timeElapsed > 0 && timeElapsed % 60 === 0) {
-                playChime();
-                timerDisplay.style.backgroundColor = '#ffd700';
-                setTimeout(() => timerDisplay.style.backgroundColor = 'white', 500);
-            }
-        }, 1000);
 
         // --- Init ---
         loadLevel();
