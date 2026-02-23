@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tic-Tac-Toe</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --board-color: #16213e;
+            --cell-color: #0f3460;
+            --x-color: #e94560;
+            --o-color: #53d8fb;
+            --win-color: #f5c518;
+            --text-color: #eee;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #status {
+            color: var(--text-color);
+            font-size: clamp(1.2rem, 4vw, 1.6rem);
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            min-height: 2em;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            background: var(--board-color);
+            padding: 8px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .cell {
+            width: clamp(80px, 22vw, 110px);
+            height: clamp(80px, 22vw, 110px);
+            background: var(--cell-color);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(2.5rem, 10vw, 3.5rem);
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.15s ease;
+        }
+
+        .cell:active {
+            transform: scale(0.95);
+        }
+
+        .cell.x {
+            color: var(--x-color);
+            text-shadow: 0 0 15px rgba(233, 69, 96, 0.5);
+        }
+
+        .cell.o {
+            color: var(--o-color);
+            text-shadow: 0 0 15px rgba(83, 216, 251, 0.5);
+        }
+
+        .cell.win {
+            background: rgba(245, 197, 24, 0.2);
+            box-shadow: 0 0 20px rgba(245, 197, 24, 0.3);
+        }
+
+        #score-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+            display: flex;
+            gap: 15px;
+        }
+
+        .score-x { color: var(--x-color); }
+        .score-o { color: var(--o-color); }
+
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="score-container">
+        <span class="score-x">You: 0</span>
+        <span>|</span>
+        <span class="score-o">AI: 0</span>
+        <span>|</span>
+        <span>Draw: 0</span>
+    </div>
+
+    <div id="status">Your turn (X)</div>
+    <div id="board"></div>
+
+    <div id="hint">You are X — tap a cell to play</div>
+
+    <script>
+        const boardEl = document.getElementById('board');
+        const statusEl = document.getElementById('status');
+        const scoreContainer = document.getElementById('score-container');
+
+        let board = Array(9).fill(null);
+        let gameOver = false;
+        let scores = { x: 0, o: 0, draw: 0 };
+
+        const WINNING_COMBOS = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6]
+        ];
+
+        // --- Audio Context Setup ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playPlaceSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.08);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.12);
+        }
+
+        function playWinSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const notes = [523.25, 659.25, 783.99, 1046.5];
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.12);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime + i * 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.12 + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + i * 0.12);
+                osc.stop(audioCtx.currentTime + i * 0.12 + 0.35);
+            });
+        }
+
+        function playLoseSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.35);
+        }
+
+        function playDrawSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.25);
+        }
+
+        // --- Build Board ---
+        function buildBoard() {
+            boardEl.innerHTML = '';
+            board = Array(9).fill(null);
+            gameOver = false;
+            statusEl.textContent = 'Your turn (X)';
+
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.dataset.index = i;
+                cell.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    handleCellClick(i);
+                });
+                boardEl.appendChild(cell);
+            }
+        }
+
+        // --- Handle Player Move ---
+        function handleCellClick(index) {
+            if (gameOver || board[index] !== null) return;
+
+            makeMove(index, 'x');
+            playPlaceSound();
+            if (navigator.vibrate) navigator.vibrate(10);
+
+            const result = checkWinner();
+            if (result) {
+                endGame(result);
+                return;
+            }
+
+            // AI turn after short delay
+            statusEl.textContent = 'AI thinking...';
+            setTimeout(() => {
+                const aiMove = getAIMove();
+                if (aiMove !== -1) {
+                    makeMove(aiMove, 'o');
+                    playPlaceSound();
+                    const result2 = checkWinner();
+                    if (result2) {
+                        endGame(result2);
+                        return;
+                    }
+                }
+                statusEl.textContent = 'Your turn (X)';
+            }, 300);
+        }
+
+        // --- Place Mark ---
+        function makeMove(index, player) {
+            board[index] = player;
+            const cells = boardEl.children;
+            cells[index].textContent = player === 'x' ? 'X' : 'O';
+            cells[index].classList.add(player);
+        }
+
+        // --- Check Winner ---
+        function checkWinner() {
+            for (const combo of WINNING_COMBOS) {
+                const [a, b, c] = combo;
+                if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                    return { winner: board[a], combo };
+                }
+            }
+            if (board.every(cell => cell !== null)) {
+                return { winner: 'draw', combo: null };
+            }
+            return null;
+        }
+
+        // --- End Game ---
+        function endGame(result) {
+            gameOver = true;
+            const cells = boardEl.children;
+
+            if (result.winner === 'draw') {
+                statusEl.textContent = "It's a draw!";
+                scores.draw++;
+                playDrawSound();
+            } else if (result.winner === 'x') {
+                statusEl.textContent = 'You win! 🎉';
+                scores.x++;
+                playWinSound();
+                if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
+                result.combo.forEach(i => cells[i].classList.add('win'));
+            } else {
+                statusEl.textContent = 'AI wins!';
+                scores.o++;
+                playLoseSound();
+                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                result.combo.forEach(i => cells[i].classList.add('win'));
+            }
+
+            updateScoreDisplay();
+            setTimeout(buildBoard, 1500);
+        }
+
+        // --- Update Score Display ---
+        function updateScoreDisplay() {
+            scoreContainer.innerHTML = `
+                <span class="score-x">You: ${scores.x}</span>
+                <span>|</span>
+                <span class="score-o">AI: ${scores.o}</span>
+                <span>|</span>
+                <span>Draw: ${scores.draw}</span>
+            `;
+        }
+
+        // --- AI Logic (Minimax-lite) ---
+        function getAIMove() {
+            const empty = board.map((v, i) => v === null ? i : -1).filter(i => i !== -1);
+            if (empty.length === 0) return -1;
+
+            // 1. Win if possible
+            for (const i of empty) {
+                board[i] = 'o';
+                if (checkWinner()?.winner === 'o') { board[i] = null; return i; }
+                board[i] = null;
+            }
+
+            // 2. Block player win
+            for (const i of empty) {
+                board[i] = 'x';
+                if (checkWinner()?.winner === 'x') { board[i] = null; return i; }
+                board[i] = null;
+            }
+
+            // 3. Take center
+            if (empty.includes(4)) return 4;
+
+            // 4. Take a corner
+            const corners = [0, 2, 6, 8].filter(i => empty.includes(i));
+            if (corners.length > 0) return corners[Math.floor(Math.random() * corners.length)];
+
+            // 5. Take any available
+            return empty[Math.floor(Math.random() * empty.length)];
+        }
+
+        // --- Init ---
+        buildBoard();
+
+    </script>
+</body>
+
+</html>
