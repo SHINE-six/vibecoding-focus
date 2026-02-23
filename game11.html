@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Color Match</title>
+    <style>
+        :root {
+            --bg-color: #1b1b2f;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #score-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #best-score {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #prompt {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: clamp(1rem, 3vw, 1.3rem);
+            margin-bottom: 10px;
+        }
+
+        #color-word {
+            font-size: clamp(2.5rem, 10vw, 4rem);
+            font-weight: bold;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            min-height: 1.2em;
+        }
+
+        #timer-bar-container {
+            width: 80%;
+            max-width: 350px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        #timer-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #e94560, #f5c518);
+            border-radius: 4px;
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+
+        #buttons {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 0 20px;
+        }
+
+        .color-btn {
+            width: clamp(120px, 35vw, 160px);
+            height: clamp(55px, 14vw, 70px);
+            border: none;
+            border-radius: 14px;
+            font-size: clamp(1rem, 3.5vw, 1.3rem);
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+
+        .color-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        #message {
+            position: fixed;
+            bottom: 80px;
+            font-size: clamp(1.2rem, 4vw, 1.6rem);
+            font-weight: bold;
+            color: white;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+
+        #game-over {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #game-over h2 {
+            color: white;
+            font-size: clamp(1.8rem, 6vw, 2.5rem);
+            margin: 0;
+        }
+
+        #game-over p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: clamp(1rem, 3vw, 1.3rem);
+            margin: 0;
+        }
+
+        #play-again {
+            background: linear-gradient(135deg, #e94560, #c23152);
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            border-radius: 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+            margin-top: 10px;
+        }
+
+        #play-again:active {
+            transform: scale(0.95);
+        }
+
+        #game-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="score-container">Score: 0</div>
+    <div id="best-score">Best: 0</div>
+
+    <div id="game-area">
+        <div id="prompt">What COLOR is the text?</div>
+        <div id="color-word">RED</div>
+        <div id="timer-bar-container">
+            <div id="timer-bar"></div>
+        </div>
+        <div id="buttons"></div>
+    </div>
+
+    <div id="game-over">
+        <h2>Game Over!</h2>
+        <p id="final-score">Score: 0</p>
+        <button id="play-again">Play Again</button>
+    </div>
+
+    <div id="message"></div>
+    <div id="hint">Tap the color of the text, not the word!</div>
+
+    <script>
+        const COLORS = [
+            { name: 'Red', hex: '#e94560' },
+            { name: 'Blue', hex: '#3498db' },
+            { name: 'Green', hex: '#2ecc40' },
+            { name: 'Yellow', hex: '#f5c518' },
+            { name: 'Purple', hex: '#9b59b6' },
+            { name: 'Orange', hex: '#e67e22' }
+        ];
+
+        const colorWord = document.getElementById('color-word');
+        const buttonsContainer = document.getElementById('buttons');
+        const scoreContainer = document.getElementById('score-container');
+        const bestScoreEl = document.getElementById('best-score');
+        const messageEl = document.getElementById('message');
+        const timerBar = document.getElementById('timer-bar');
+        const gameArea = document.getElementById('game-area');
+        const gameOverEl = document.getElementById('game-over');
+        const finalScoreEl = document.getElementById('final-score');
+        const playAgainBtn = document.getElementById('play-again');
+
+        let score = 0;
+        let bestScore = 0;
+        let correctColor = null;
+        let timeLeft = 100;
+        let timerInterval = null;
+        let locked = false;
+        let messageTimeout = null;
+
+        // --- Audio Context Setup ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playCorrectSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(660, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.18);
+        }
+
+        function playWrongSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(250, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.25);
+        }
+
+        function playGameOverSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const notes = [400, 350, 300, 250];
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * 0.15);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime + i * 0.15);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.15 + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + i * 0.15);
+                osc.stop(audioCtx.currentTime + i * 0.15 + 0.35);
+            });
+        }
+
+        // --- Shuffle (Fisher-Yates) ---
+        function shuffle(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        // --- Pick random item from array ---
+        function randomPick(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // --- Show floating message ---
+        function showMessage(text, color) {
+            clearTimeout(messageTimeout);
+            messageEl.textContent = text;
+            messageEl.style.color = color;
+            messageEl.style.opacity = '1';
+            messageTimeout = setTimeout(() => {
+                messageEl.style.opacity = '0';
+            }, 600);
+        }
+
+        // --- Generate Round ---
+        function generateRound() {
+            locked = false;
+
+            // Pick the displayed word (name of a color)
+            const wordColor = randomPick(COLORS);
+
+            // Pick the actual display color (different from word to make it tricky)
+            let displayColor;
+            do {
+                displayColor = randomPick(COLORS);
+            } while (displayColor.name === wordColor.name && COLORS.length > 1);
+
+            correctColor = displayColor;
+
+            // Set the word text and its display color
+            colorWord.textContent = wordColor.name;
+            colorWord.style.color = displayColor.hex;
+
+            // Pick 4 button options: must include the correct answer
+            let options = [displayColor];
+            const others = COLORS.filter(c => c.name !== displayColor.name);
+            const shuffledOthers = shuffle(others);
+            for (let i = 0; i < 3 && i < shuffledOthers.length; i++) {
+                options.push(shuffledOthers[i]);
+            }
+            options = shuffle(options);
+
+            // Create buttons
+            buttonsContainer.innerHTML = '';
+            options.forEach(color => {
+                const btn = document.createElement('button');
+                btn.classList.add('color-btn');
+                btn.textContent = color.name;
+                btn.style.background = color.hex;
+                btn.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    handleAnswer(color);
+                });
+                buttonsContainer.appendChild(btn);
+            });
+        }
+
+        // --- Handle Answer ---
+        function handleAnswer(chosen) {
+            if (locked) return;
+            locked = true;
+
+            if (chosen.name === correctColor.name) {
+                score++;
+                scoreContainer.textContent = `Score: ${score}`;
+                playCorrectSound();
+                showMessage('+1 ✓', '#2ecc40');
+                if (navigator.vibrate) navigator.vibrate(10);
+
+                // Add time bonus (capped at 100)
+                timeLeft = Math.min(100, timeLeft + 15);
+                timerBar.style.width = timeLeft + '%';
+
+                setTimeout(generateRound, 200);
+            } else {
+                playWrongSound();
+                showMessage('Wrong!', '#e94560');
+                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+
+                // Penalty
+                timeLeft = Math.max(0, timeLeft - 20);
+                timerBar.style.width = timeLeft + '%';
+
+                if (timeLeft <= 0) {
+                    endGame();
+                } else {
+                    setTimeout(generateRound, 400);
+                }
+            }
+        }
+
+        // --- Timer ---
+        function startTimer() {
+            clearInterval(timerInterval);
+            timeLeft = 100;
+            timerBar.style.width = '100%';
+
+            timerInterval = setInterval(() => {
+                timeLeft -= 1;
+                timerBar.style.width = Math.max(0, timeLeft) + '%';
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 150);
+        }
+
+        // --- End Game ---
+        function endGame() {
+            clearInterval(timerInterval);
+            locked = true;
+            playGameOverSound();
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestScoreEl.textContent = `Best: ${bestScore}`;
+            }
+
+            finalScoreEl.textContent = `Score: ${score}`;
+            gameArea.style.display = 'none';
+            gameOverEl.style.display = 'flex';
+        }
+
+        // --- Start Game ---
+        function startGame() {
+            score = 0;
+            scoreContainer.textContent = 'Score: 0';
+            gameOverEl.style.display = 'none';
+            gameArea.style.display = 'flex';
+            generateRound();
+            startTimer();
+        }
+
+        // --- Event Listeners ---
+        playAgainBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            startGame();
+        });
+
+        // --- Init ---
+        startGame();
+
+    </script>
+</body>
+
+</html>
