@@ -200,14 +200,14 @@
 
         function initPositions() {
             // Goal
-            goalW = W * 0.55;
+            goalW = W * 0.68;
             goalH = H * 0.08;
             goalX = (W - goalW) / 2;
             goalY = H * 0.1;
             postW = W * 0.02;
 
             // Ball
-            ballRadius = Math.min(W, H) * 0.035;
+            ballRadius = Math.min(W, H) * 0.047;
             ballStartX = W / 2;
             ballStartY = H * 0.82;
 
@@ -217,7 +217,7 @@
             gkY = goalY + goalH * 0.3;
             gkMinX = goalX + postW;
             gkMaxX = goalX + goalW - postW - gkW;
-            gkSpeed = W * 0.003 + Math.random() * W * 0.001;
+            gkSpeed = W * 0.002 + Math.random() * W * 0.001;
             gkDir = 1;
             gkTurnPoint = 0;
             resetGKTurnPoint();
@@ -252,7 +252,7 @@
             if (ballFlying) {
                 // React to the ball: move towards the target position
                 const targetGkX = Math.max(gkMinX, Math.min(gkMaxX, ballTargetX - gkW / 2));
-                const reactionSpeed = W * 0.012;
+                const reactionSpeed = W * 0.007;
                 if (gkX < targetGkX) {
                     gkX = Math.min(gkX + reactionSpeed, targetGkX);
                 } else if (gkX > targetGkX) {
@@ -269,13 +269,13 @@
                 if (gkX <= Math.max(gkMinX, leftBound)) {
                     gkX = Math.max(gkMinX, leftBound);
                     gkDir = 1;
-                    gkSpeed = W * 0.003 + Math.random() * W * 0.002;
+                    gkSpeed = W * 0.002 + Math.random() * W * 0.001;
                     resetGKTurnPoint();
                 }
                 if (gkX >= Math.min(gkMaxX, rightBound)) {
                     gkX = Math.min(gkMaxX, rightBound);
                     gkDir = -1;
-                    gkSpeed = W * 0.003 + Math.random() * W * 0.002;
+                    gkSpeed = W * 0.002 + Math.random() * W * 0.001;
                     resetGKTurnPoint();
                 }
             }
@@ -515,11 +515,11 @@
             ballTargetX = Math.max(goalX + margin, Math.min(goalX + goalW - margin, targetX));
             ballTargetY = goalY + goalH * 0.5;
 
-            // Calculate velocity
+            // Calculate velocity (random speed 0.022–0.036, slower than before)
             const dx = ballTargetX - ballX;
             const dy = ballTargetY - ballY;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            const speed = dist * 0.04;
+            const speed = dist * (0.022 + Math.random() * 0.014);
             ballVX = (dx / dist) * speed;
             ballVY = (dy / dist) * speed;
 
