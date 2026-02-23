@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zen Koi Pond</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a3a4a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+            pointer-events: none;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hint">Tap to create ripples 🌊</div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- Canvas Setup ---
+        let W, H;
+
+        function resizeCanvas() {
+            const maxW = Math.min(window.innerWidth * 0.95, 500);
+            const maxH = Math.min(window.innerHeight * 0.85, 700);
+            W = Math.floor(maxW);
+            H = Math.floor(maxH);
+            canvas.width = W;
+            canvas.height = H;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- Audio ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioCtx();
+
+        function playRippleSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            // Gentle water drop sound
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+
+            osc.type = 'sine';
+            const baseFreq = 400 + Math.random() * 200;
+            osc.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, audioCtx.currentTime + 0.3);
+
+            filter.type = 'lowpass';
+            filter.frequency.value = 800;
+
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // --- Ripples ---
+        const ripples = [];
+
+        function addRipple(x, y) {
+            ripples.push({
+                x: x,
+                y: y,
+                radius: 0,
+                maxRadius: 60 + Math.random() * 40,
+                alpha: 0.6,
+                speed: 1.5 + Math.random() * 0.5
+            });
+            playRippleSound();
+        }
+
+        function updateRipples() {
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                const r = ripples[i];
+                r.radius += r.speed;
+                r.alpha = 0.6 * (1 - r.radius / r.maxRadius);
+                if (r.radius >= r.maxRadius) {
+                    ripples.splice(i, 1);
+                }
+            }
+        }
+
+        function drawRipples() {
+            ripples.forEach(r => {
+                ctx.strokeStyle = `rgba(255, 255, 255, ${r.alpha})`;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Second ring
+                if (r.radius > 10) {
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${r.alpha * 0.4})`;
+                    ctx.beginPath();
+                    ctx.arc(r.x, r.y, r.radius * 0.6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        // --- Lily Pads ---
+        const lilyPads = [];
+
+        function initLilyPads() {
+            const count = 3 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < count; i++) {
+                lilyPads.push({
+                    x: W * 0.15 + Math.random() * W * 0.7,
+                    y: H * 0.15 + Math.random() * H * 0.7,
+                    radius: 18 + Math.random() * 14,
+                    rotation: Math.random() * Math.PI * 2,
+                    gapAngle: Math.random() * Math.PI * 2,
+                    bobPhase: Math.random() * Math.PI * 2,
+                    hasFlower: Math.random() > 0.5
+                });
+            }
+        }
+
+        function drawLilyPads() {
+            lilyPads.forEach(pad => {
+                // Gentle bobbing
+                pad.bobPhase += 0.008;
+                const bob = Math.sin(pad.bobPhase) * 1.5;
+
+                ctx.save();
+                ctx.translate(pad.x, pad.y + bob);
+                ctx.rotate(pad.rotation);
+
+                // Pad (circle with gap)
+                ctx.fillStyle = 'rgba(34, 120, 60, 0.7)';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, pad.radius, pad.gapAngle + 0.3, pad.gapAngle + Math.PI * 2 - 0.3);
+                ctx.closePath();
+                ctx.fill();
+
+                // Vein line
+                ctx.strokeStyle = 'rgba(20, 80, 40, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(pad.radius * 0.8, 0);
+                ctx.stroke();
+
+                // Flower on some pads
+                if (pad.hasFlower) {
+                    const flowerColors = ['#FFB7C5', '#FF69B4', '#FF1493', '#fff0f5'];
+                    const petalColor = flowerColors[Math.floor(pad.x) % flowerColors.length];
+                    const petalCount = 5;
+                    const petalSize = pad.radius * 0.28;
+
+                    for (let p = 0; p < petalCount; p++) {
+                        const angle = (p / petalCount) * Math.PI * 2;
+                        const px = Math.cos(angle) * petalSize * 1.2;
+                        const py = Math.sin(angle) * petalSize * 1.2;
+                        ctx.fillStyle = petalColor;
+                        ctx.beginPath();
+                        ctx.ellipse(px, py, petalSize, petalSize * 0.6, angle, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Center
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, petalSize * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+        }
+
+        // --- Koi Fish ---
+        const fish = [];
+        const koiColors = [
+            { body: '#FF6B35', spots: '#ffffff', accent: '#CC4400' },
+            { body: '#ffffff', spots: '#FF4444', accent: '#dddddd' },
+            { body: '#FFD700', spots: '#FF6B35', accent: '#DAA520' },
+            { body: '#ffffff', spots: '#333333', accent: '#eeeeee' },
+            { body: '#FF4444', spots: '#ffffff', accent: '#CC0000' }
+        ];
+
+        function initFish() {
+            const count = 4 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < count; i++) {
+                const colors = koiColors[i % koiColors.length];
+                fish.push({
+                    x: W * 0.1 + Math.random() * W * 0.8,
+                    y: H * 0.1 + Math.random() * H * 0.8,
+                    angle: Math.random() * Math.PI * 2,
+                    speed: 0.3 + Math.random() * 0.4,
+                    size: 14 + Math.random() * 10,
+                    colors: colors,
+                    turnSpeed: 0,
+                    targetAngle: Math.random() * Math.PI * 2,
+                    turnTimer: 0,
+                    tailPhase: Math.random() * Math.PI * 2,
+                    scared: false,
+                    scaredTimer: 0
+                });
+            }
+        }
+
+        function updateFish() {
+            fish.forEach(f => {
+                // Scared behavior (from ripples)
+                if (f.scared) {
+                    f.scaredTimer--;
+                    if (f.scaredTimer <= 0) {
+                        f.scared = false;
+                    }
+                }
+
+                const currentSpeed = f.scared ? f.speed * 2.5 : f.speed;
+
+                // Randomly change direction
+                f.turnTimer--;
+                if (f.turnTimer <= 0) {
+                    f.targetAngle = f.angle + (Math.random() - 0.5) * Math.PI * 0.8;
+                    f.turnTimer = 60 + Math.floor(Math.random() * 120);
+                }
+
+                // Smoothly turn towards target
+                let angleDiff = f.targetAngle - f.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                f.angle += angleDiff * 0.03;
+
+                // Move
+                f.x += Math.cos(f.angle) * currentSpeed;
+                f.y += Math.sin(f.angle) * currentSpeed;
+
+                // Bounce off edges with smooth turning
+                const margin = f.size * 2;
+                if (f.x < margin) { f.targetAngle = 0; f.turnTimer = 30; }
+                if (f.x > W - margin) { f.targetAngle = Math.PI; f.turnTimer = 30; }
+                if (f.y < margin) { f.targetAngle = Math.PI / 2; f.turnTimer = 30; }
+                if (f.y > H - margin) { f.targetAngle = -Math.PI / 2; f.turnTimer = 30; }
+
+                // Keep in bounds
+                f.x = Math.max(5, Math.min(W - 5, f.x));
+                f.y = Math.max(5, Math.min(H - 5, f.y));
+
+                // Tail animation
+                f.tailPhase += 0.08 * (f.scared ? 2 : 1);
+            });
+        }
+
+        function scareFishNear(x, y) {
+            fish.forEach(f => {
+                const dx = f.x - x;
+                const dy = f.y - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 120) {
+                    f.scared = true;
+                    f.scaredTimer = 60 + Math.floor(Math.random() * 40);
+                    // Swim away from ripple
+                    f.targetAngle = Math.atan2(dy, dx);
+                    f.turnTimer = 40;
+                }
+            });
+        }
+
+        function drawFish() {
+            fish.forEach(f => {
+                ctx.save();
+                ctx.translate(f.x, f.y);
+                ctx.rotate(f.angle);
+
+                const s = f.size;
+                const tailSwing = Math.sin(f.tailPhase) * 0.3;
+
+                // Shadow under fish
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.beginPath();
+                ctx.ellipse(2, 3, s * 1.2, s * 0.45, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Tail
+                ctx.fillStyle = f.colors.body;
+                ctx.beginPath();
+                ctx.moveTo(-s * 0.6, 0);
+                ctx.quadraticCurveTo(-s * 1.0, -s * 0.5 + tailSwing * s, -s * 1.4, -s * 0.4 + tailSwing * s);
+                ctx.quadraticCurveTo(-s * 1.0, tailSwing * s * 0.3, -s * 1.4, s * 0.4 + tailSwing * s);
+                ctx.quadraticCurveTo(-s * 1.0, s * 0.5 + tailSwing * s, -s * 0.6, 0);
+                ctx.fill();
+
+                // Body
+                ctx.fillStyle = f.colors.body;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, s, s * 0.42, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Spots/pattern
+                ctx.fillStyle = f.colors.spots;
+                ctx.globalAlpha = 0.7;
+                // Spot 1
+                ctx.beginPath();
+                ctx.ellipse(s * 0.2, -s * 0.08, s * 0.25, s * 0.18, 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                // Spot 2
+                ctx.beginPath();
+                ctx.ellipse(-s * 0.15, s * 0.1, s * 0.2, s * 0.15, -0.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Head accent
+                ctx.fillStyle = f.colors.accent;
+                ctx.beginPath();
+                ctx.ellipse(s * 0.6, 0, s * 0.35, s * 0.28, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eye
+                ctx.fillStyle = '#111';
+                ctx.beginPath();
+                ctx.arc(s * 0.7, -s * 0.1, s * 0.07, 0, Math.PI * 2);
+                ctx.fill();
+                // Eye highlight
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(s * 0.72, -s * 0.12, s * 0.03, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Dorsal fin (subtle)
+                ctx.fillStyle = f.colors.accent;
+                ctx.globalAlpha = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(s * 0.1, -s * 0.38);
+                ctx.quadraticCurveTo(0, -s * 0.65, -s * 0.3, -s * 0.38);
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                ctx.restore();
+            });
+        }
+
+        // --- Floating Petals ---
+        const petals = [];
+
+        function initPetals() {
+            for (let i = 0; i < 6; i++) {
+                petals.push(createPetal());
+            }
+        }
+
+        function createPetal() {
+            return {
+                x: Math.random() * W,
+                y: -10 - Math.random() * 50,
+                size: 3 + Math.random() * 4,
+                rotation: Math.random() * Math.PI * 2,
+                rotSpeed: (Math.random() - 0.5) * 0.02,
+                driftX: (Math.random() - 0.5) * 0.3,
+                fallSpeed: 0.2 + Math.random() * 0.3,
+                alpha: 0.5 + Math.random() * 0.3,
+                color: Math.random() > 0.5 ? '#FFB7C5' : '#FFC0CB'
+            };
+        }
+
+        function updatePetals() {
+            petals.forEach((p, i) => {
+                p.x += p.driftX + Math.sin(p.y * 0.01) * 0.2;
+                p.y += p.fallSpeed;
+                p.rotation += p.rotSpeed;
+
+                // Reset if off screen
+                if (p.y > H + 20 || p.x < -20 || p.x > W + 20) {
+                    petals[i] = createPetal();
+                }
+            });
+        }
+
+        function drawPetals() {
+            petals.forEach(p => {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+                ctx.globalAlpha = p.alpha;
+
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, p.size, p.size * 0.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Petal crease
+                ctx.strokeStyle = 'rgba(255, 150, 170, 0.3)';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(-p.size * 0.5, 0);
+                ctx.lineTo(p.size * 0.5, 0);
+                ctx.stroke();
+
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            });
+        }
+
+        // --- Water Surface ---
+        let waterTime = 0;
+
+        function drawWater() {
+            // Deep water gradient
+            const grad = ctx.createLinearGradient(0, 0, 0, H);
+            grad.addColorStop(0, '#1a4a5a');
+            grad.addColorStop(0.5, '#1a3a4a');
+            grad.addColorStop(1, '#0f2a35');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+
+            // Subtle caustic light patterns
+            waterTime += 0.005;
+            ctx.globalAlpha = 0.04;
+            for (let i = 0; i < 5; i++) {
+                const cx = W * 0.5 + Math.sin(waterTime + i * 1.3) * W * 0.3;
+                const cy = H * 0.5 + Math.cos(waterTime * 0.7 + i * 0.9) * H * 0.3;
+                const r = 80 + Math.sin(waterTime * 0.5 + i) * 30;
+
+                ctx.fillStyle = '#88ccff';
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            // Pond edge (dark border)
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.roundRect(2, 2, W - 4, H - 4, 12);
+            ctx.stroke();
+
+            // Stone edge
+            drawStoneEdge();
+        }
+
+        function drawStoneEdge() {
+            const stoneColors = ['#6B7B6B', '#7A8A7A', '#5A6A5A', '#8A9A8A'];
+            const stoneCount = 24;
+
+            for (let i = 0; i < stoneCount; i++) {
+                const angle = (i / stoneCount) * Math.PI * 2;
+                const edgeX = W / 2 + Math.cos(angle) * (W / 2 + 2);
+                const edgeY = H / 2 + Math.sin(angle) * (H / 2 + 2);
+
+                // Only draw stones that are near the edge
+                if (edgeX < -10 || edgeX > W + 10 || edgeY < -10 || edgeY > H + 10) continue;
+
+                // Clamp to edge
+                const sx = Math.max(-2, Math.min(W + 2, edgeX));
+                const sy = Math.max(-2, Math.min(H + 2, edgeY));
+
+                ctx.fillStyle = stoneColors[i % stoneColors.length];
+                ctx.beginPath();
+                ctx.ellipse(sx, sy, 12 + (i * 3) % 8, 8 + (i * 2) % 5, angle, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // --- Main Draw ---
+        function draw() {
+            drawWater();
+            drawLilyPads();
+            drawFish();
+            drawRipples();
+            drawPetals();
+        }
+
+        // --- Input ---
+        function getCanvasPos(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (clientX - rect.left) * (W / rect.width),
+                y: (clientY - rect.top) * (H / rect.height)
+            };
+        }
+
+        function onTap(clientX, clientY) {
+            const pos = getCanvasPos(clientX, clientY);
+            addRipple(pos.x, pos.y);
+            scareFishNear(pos.x, pos.y);
+            if (navigator.vibrate) navigator.vibrate(10);
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            onTap(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                onTap(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        // Allow dragging to create multiple ripples
+        let lastRippleTime = 0;
+        canvas.addEventListener('pointermove', (e) => {
+            if (e.buttons > 0) {
+                const now = Date.now();
+                if (now - lastRippleTime > 200) {
+                    lastRippleTime = now;
+                    const pos = getCanvasPos(e.clientX, e.clientY);
+                    addRipple(pos.x, pos.y);
+                    scareFishNear(pos.x, pos.y);
+                }
+            }
+        });
+
+        // Keyboard - press space to create random ripple
+        document.addEventListener('keydown', (e) => {
+            if (e.key === ' ') {
+                const rx = W * 0.2 + Math.random() * W * 0.6;
+                const ry = H * 0.2 + Math.random() * H * 0.6;
+                addRipple(rx, ry);
+                scareFishNear(rx, ry);
+            }
+        });
+
+        // --- Init & Loop ---
+        initLilyPads();
+        initFish();
+        initPetals();
+
+        function gameLoop() {
+            updateFish();
+            updateRipples();
+            updatePetals();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Paper Toss</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #8B7355;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #score-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #333;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #best-score {
+            position: fixed;
+            top: 60px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 6px 14px;
+            border-radius: 14px;
+            font-size: 0.85rem;
+            color: #666;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+            pointer-events: none;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        }
+
+        #message {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        #message.show {
+            display: flex;
+        }
+
+        #message h2 {
+            color: white;
+            font-size: clamp(2rem, 6vw, 3rem);
+            margin: 0;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        #message p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="score-container">🏀 Streak: 0</div>
+    <div id="best-score">Best: 0</div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="message">
+        <h2 id="msg-text">Nice!</h2>
+        <p id="msg-sub"></p>
+    </div>
+
+    <div id="hint">Swipe up to toss the paper</div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-container');
+        const bestDisplay = document.getElementById('best-score');
+        const messageScreen = document.getElementById('message');
+        const msgText = document.getElementById('msg-text');
+        const msgSub = document.getElementById('msg-sub');
+
+        // --- Canvas Setup ---
+        let W, H;
+
+        function resizeCanvas() {
+            const maxW = Math.min(window.innerWidth * 0.95, 500);
+            const maxH = Math.min(window.innerHeight * 0.8, 700);
+            W = Math.floor(maxW);
+            H = Math.floor(maxH);
+            canvas.width = W;
+            canvas.height = H;
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            draw();
+        });
+
+        // --- Audio ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioCtx();
+
+        function playTossSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(180, audioCtx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.25);
+        }
+
+        function playScoreSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const freqs = [523.25, 659.25, 783.99];
+            freqs.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                const t = audioCtx.currentTime + i * 0.08;
+                gain.gain.setValueAtTime(0, t);
+                gain.gain.linearRampToValueAtTime(0.12, t + 0.04);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(t);
+                osc.stop(t + 1.0);
+            });
+        }
+
+        function playMissSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.4);
+        }
+
+        function playBounceSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.08);
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        // --- Game State ---
+        let streak = 0;
+        let bestStreak = parseInt(localStorage.getItem('paperTossBest') || '0', 10);
+        let state = 'ready'; // 'ready', 'dragging', 'flying', 'result'
+
+        // Wind
+        let wind = 0; // -1 to 1 (negative = left, positive = right)
+        let windParticles = [];
+
+        // Paper ball
+        let paper = { x: 0, y: 0, vx: 0, vy: 0, rotation: 0, rotSpeed: 0, scale: 1 };
+
+        // Trash can position
+        let bin = { x: 0, y: 0, w: 0, h: 0, rimW: 0 };
+
+        // Swipe tracking
+        let dragStartX = 0, dragStartY = 0;
+        let dragEndX = 0, dragEndY = 0;
+        let isDragging = false;
+        let dragTime = 0;
+
+        function initPositions() {
+            // Trash can at top center
+            bin.w = W * 0.18;
+            bin.h = H * 0.1;
+            bin.x = W / 2 - bin.w / 2;
+            bin.y = H * 0.12;
+            bin.rimW = bin.w * 0.12;
+
+            resetPaper();
+        }
+
+        function resetPaper() {
+            paper.x = W / 2;
+            paper.y = H * 0.82;
+            paper.vx = 0;
+            paper.vy = 0;
+            paper.rotation = 0;
+            paper.rotSpeed = 0;
+            paper.scale = 1;
+        }
+
+        function setNewWind() {
+            wind = (Math.random() - 0.5) * 2; // -1 to 1
+            // Make wind stronger as streak increases
+            const streakBonus = Math.min(streak * 0.05, 0.4);
+            wind *= (0.6 + streakBonus);
+            // Create wind particles
+            windParticles = [];
+            for (let i = 0; i < 8; i++) {
+                windParticles.push({
+                    x: Math.random() * W,
+                    y: H * 0.2 + Math.random() * H * 0.5,
+                    speed: 1 + Math.random() * 2,
+                    size: 1 + Math.random() * 2,
+                    alpha: 0.2 + Math.random() * 0.3
+                });
+            }
+        }
+
+        initPositions();
+        setNewWind();
+        bestDisplay.textContent = `Best: ${bestStreak}`;
+
+        // --- Drawing ---
+        function draw() {
+            // Office / desk background
+            ctx.fillStyle = '#8B7355';
+            ctx.fillRect(0, 0, W, H);
+
+            // Desk surface
+            drawDesk();
+
+            // Wind indicator
+            drawWindIndicator();
+
+            // Wind particles
+            drawWindParticles();
+
+            // Trash can
+            drawBin();
+
+            // Paper ball
+            drawPaper();
+        }
+
+        function drawDesk() {
+            // Wooden desk pattern
+            ctx.fillStyle = '#A0845C';
+            ctx.fillRect(0, H * 0.65, W, H * 0.35);
+
+            // Desk edge line
+            ctx.strokeStyle = '#7A6543';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, H * 0.65);
+            ctx.lineTo(W, H * 0.65);
+            ctx.stroke();
+
+            // Wood grain lines
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 6; i++) {
+                const y = H * 0.68 + i * H * 0.045;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.bezierCurveTo(W * 0.3, y + 3, W * 0.7, y - 3, W, y);
+                ctx.stroke();
+            }
+
+            // Wall - office beige
+            ctx.fillStyle = '#D4C5A9';
+            ctx.fillRect(0, 0, W, H * 0.65);
+
+            // Baseboard
+            ctx.fillStyle = '#BDA77A';
+            ctx.fillRect(0, H * 0.6, W, H * 0.05);
+        }
+
+        function drawWindIndicator() {
+            const centerX = W / 2;
+            const y = H * 0.06;
+            const barW = W * 0.4;
+            const barH = 8;
+
+            // Background bar
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.beginPath();
+            ctx.roundRect(centerX - barW / 2, y - barH / 2, barW, barH, 4);
+            ctx.fill();
+
+            // Center marker
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillRect(centerX - 1, y - barH / 2 - 2, 2, barH + 4);
+
+            // Wind arrow indicator
+            const arrowX = centerX + wind * (barW / 2) * 0.9;
+            const arrowSize = 10;
+
+            ctx.fillStyle = Math.abs(wind) > 0.6 ? '#ff6b6b' : Math.abs(wind) > 0.3 ? '#ffd93d' : '#6bff6b';
+            ctx.beginPath();
+            ctx.arc(arrowX, y, arrowSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Wind label
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.font = `bold ${Math.max(11, W * 0.028)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('WIND', centerX, y - barH / 2 - 4);
+
+            // Arrow direction
+            if (Math.abs(wind) > 0.1) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.font = `${Math.max(14, W * 0.04)}px sans-serif`;
+                ctx.textBaseline = 'middle';
+                if (wind > 0) {
+                    ctx.textAlign = 'left';
+                    ctx.fillText('→', centerX + barW / 2 + 5, y);
+                } else {
+                    ctx.textAlign = 'right';
+                    ctx.fillText('←', centerX - barW / 2 - 5, y);
+                }
+            }
+        }
+
+        function drawWindParticles() {
+            if (state === 'ready' || state === 'dragging') {
+                windParticles.forEach(p => {
+                    p.x += wind * p.speed * 2;
+                    if (wind > 0 && p.x > W + 10) p.x = -10;
+                    if (wind < 0 && p.x < -10) p.x = W + 10;
+                    if (Math.abs(wind) < 0.05) return;
+
+                    ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha * Math.min(1, Math.abs(wind) * 2)})`;
+                    ctx.beginPath();
+                    // Small dashes for wind
+                    const dashLen = 6 + Math.abs(wind) * 10;
+                    ctx.fillRect(p.x, p.y, dashLen, p.size);
+                });
+            }
+        }
+
+        function drawBin() {
+            const { x, y, w, h, rimW } = bin;
+
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.beginPath();
+            ctx.ellipse(x + w / 2, y + h + 5, w * 0.55, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bin body (trapezoid shape)
+            ctx.fillStyle = '#555';
+            ctx.beginPath();
+            ctx.moveTo(x + rimW * 0.5, y);
+            ctx.lineTo(x + rimW, y + h);
+            ctx.lineTo(x + w - rimW, y + h);
+            ctx.lineTo(x + w - rimW * 0.5, y);
+            ctx.closePath();
+            ctx.fill();
+
+            // Bin body gradient overlay
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.beginPath();
+            ctx.moveTo(x + rimW * 0.5, y);
+            ctx.lineTo(x + rimW, y + h);
+            ctx.lineTo(x + w / 2, y + h);
+            ctx.lineTo(x + w / 2, y);
+            ctx.closePath();
+            ctx.fill();
+
+            // Rim (ellipse at top)
+            ctx.fillStyle = '#666';
+            ctx.beginPath();
+            ctx.ellipse(x + w / 2, y, w / 2, h * 0.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner rim
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(x + w / 2, y, w / 2 - 3, h * 0.12, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawPaper() {
+            ctx.save();
+            ctx.translate(paper.x, paper.y);
+            ctx.rotate(paper.rotation);
+            ctx.scale(paper.scale, paper.scale);
+
+            const size = Math.min(W, H) * 0.055;
+
+            // Paper crumple ball
+            ctx.fillStyle = '#f5f0e8';
+            ctx.beginPath();
+            // Irregular shape for crumpled look
+            const points = 8;
+            for (let i = 0; i < points; i++) {
+                const angle = (i / points) * Math.PI * 2;
+                const radius = size * (0.8 + Math.sin(i * 2.7) * 0.2);
+                const px = Math.cos(angle) * radius;
+                const py = Math.sin(angle) * radius;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Crumple lines
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 4; i++) {
+                const a1 = Math.random() * Math.PI * 2;
+                const a2 = a1 + Math.PI * 0.3 + Math.random() * 0.4;
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a1) * size * 0.5, Math.sin(a1) * size * 0.5);
+                ctx.lineTo(Math.cos(a2) * size * 0.6, Math.sin(a2) * size * 0.6);
+                ctx.stroke();
+            }
+
+            // Shadow/depth
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+            ctx.beginPath();
+            ctx.arc(size * 0.15, size * 0.15, size * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Highlight
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            ctx.arc(-size * 0.2, -size * 0.2, size * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // --- Physics Update ---
+        function updatePaper() {
+            if (state !== 'flying') return;
+
+            // Apply wind force
+            paper.vx += wind * 0.12;
+
+            // Apply gravity (upward toss means negative vy initially)
+            paper.vy += 0.35;
+
+            // Air resistance
+            paper.vx *= 0.995;
+            paper.vy *= 0.995;
+
+            paper.x += paper.vx;
+            paper.y += paper.vy;
+            paper.rotation += paper.rotSpeed;
+
+            // Scale down as paper goes up (perspective)
+            const progress = 1 - Math.max(0, (paper.y - bin.y) / (H * 0.82 - bin.y));
+            paper.scale = Math.max(0.4, 1 - progress * 0.5);
+
+            // Check if paper reached bin height
+            if (paper.y <= bin.y + bin.h * 0.5 && paper.vy < 0) {
+                checkScore();
+                return;
+            }
+
+            // Check if paper went off screen or fell below start
+            if (paper.y > H + 50 || paper.x < -50 || paper.x > W + 50) {
+                miss();
+                return;
+            }
+
+            // If paper started going down and is past the bin
+            if (paper.vy > 0 && paper.y > bin.y + bin.h + 20) {
+                miss();
+            }
+        }
+
+        function checkScore() {
+            const binCenterX = bin.x + bin.w / 2;
+            const tolerance = bin.w * 0.35;
+
+            if (Math.abs(paper.x - binCenterX) < tolerance) {
+                // Score!
+                streak++;
+                if (streak > bestStreak) {
+                    bestStreak = streak;
+                    localStorage.setItem('paperTossBest', bestStreak.toString());
+                    bestDisplay.textContent = `Best: ${bestStreak}`;
+                }
+                scoreDisplay.textContent = `🏀 Streak: ${streak}`;
+                playScoreSound();
+                if (navigator.vibrate) navigator.vibrate(100);
+
+                const msgs = ['Nice! 🎯', 'Swish! 🗑️', 'Nothing but net!', 'Perfect! ✨', 'Clean! 🧹'];
+                showMessage(msgs[Math.floor(Math.random() * msgs.length)], '');
+
+                state = 'result';
+                setTimeout(() => {
+                    resetForToss();
+                }, 1200);
+            } else {
+                // Rim bounce
+                playBounceSound();
+                // Deflect the paper
+                paper.vy = Math.abs(paper.vy) * 0.3;
+                paper.vx += (paper.x > binCenterX ? 1 : -1) * 3;
+                paper.rotSpeed *= 2;
+
+                // It will eventually fall and trigger miss
+                setTimeout(() => {
+                    if (state === 'flying') {
+                        miss();
+                    }
+                }, 1500);
+            }
+        }
+
+        function miss() {
+            if (state !== 'flying') return;
+            playMissSound();
+            streak = 0;
+            scoreDisplay.textContent = `🏀 Streak: ${streak}`;
+            showMessage('Miss! 😅', 'Swipe up to try again');
+            state = 'result';
+            setTimeout(() => {
+                resetForToss();
+            }, 1200);
+        }
+
+        function resetForToss() {
+            state = 'ready';
+            resetPaper();
+            setNewWind();
+            messageScreen.classList.remove('show');
+        }
+
+        function showMessage(text, sub) {
+            msgText.textContent = text;
+            msgSub.textContent = sub;
+            messageScreen.classList.add('show');
+        }
+
+        // --- Input Handling ---
+        function getCanvasPos(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (clientX - rect.left) * (W / rect.width),
+                y: (clientY - rect.top) * (H / rect.height)
+            };
+        }
+
+        function onPointerDown(clientX, clientY) {
+            if (state !== 'ready') return;
+            const pos = getCanvasPos(clientX, clientY);
+
+            // Only allow drag from bottom half (near the paper)
+            if (pos.y < H * 0.55) return;
+
+            isDragging = true;
+            state = 'dragging';
+            dragStartX = pos.x;
+            dragStartY = pos.y;
+            dragEndX = pos.x;
+            dragEndY = pos.y;
+            dragTime = Date.now();
+        }
+
+        function onPointerMove(clientX, clientY) {
+            if (!isDragging) return;
+            const pos = getCanvasPos(clientX, clientY);
+            dragEndX = pos.x;
+            dragEndY = pos.y;
+        }
+
+        function onPointerUp() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            const dx = dragEndX - dragStartX;
+            const dy = dragEndY - dragStartY;
+            const elapsed = Math.max(1, Date.now() - dragTime);
+
+            // Must swipe upward
+            if (dy > -20) {
+                state = 'ready';
+                return;
+            }
+
+            // Calculate toss velocity based on swipe
+            const speed = Math.sqrt(dx * dx + dy * dy) / elapsed;
+            const power = Math.min(Math.max(speed * 8, 5), 18);
+
+            paper.vy = -power;
+            paper.vx = dx * 0.03;
+            paper.rotSpeed = (Math.random() - 0.5) * 0.3;
+
+            state = 'flying';
+            playTossSound();
+            if (navigator.vibrate) navigator.vibrate(20);
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            onPointerDown(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            e.preventDefault();
+            onPointerMove(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('pointerup', (e) => {
+            e.preventDefault();
+            onPointerUp();
+        });
+
+        canvas.addEventListener('pointercancel', () => {
+            isDragging = false;
+            if (state === 'dragging') state = 'ready';
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            onPointerUp();
+        }, { passive: false });
+
+        // Keyboard fallback
+        document.addEventListener('keydown', (e) => {
+            if (state !== 'ready') return;
+            if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+                // Quick toss to center
+                paper.vy = -12;
+                paper.vx = (Math.random() - 0.5) * 2;
+                paper.rotSpeed = (Math.random() - 0.5) * 0.3;
+                state = 'flying';
+                playTossSound();
+            } else if (e.key === 'ArrowLeft' || e.key === 'a') {
+                paper.vy = -12;
+                paper.vx = -3;
+                paper.rotSpeed = -0.15;
+                state = 'flying';
+                playTossSound();
+            } else if (e.key === 'ArrowRight' || e.key === 'd') {
+                paper.vy = -12;
+                paper.vx = 3;
+                paper.rotSpeed = 0.15;
+                state = 'flying';
+                playTossSound();
+            }
+        });
+
+        // --- Game Loop ---
+        function gameLoop() {
+            updatePaper();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+
+</html>
