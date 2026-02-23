@@ -1,20 +1,56 @@
-# Vibe Coding Focus
+# 🎮 Vibe Coding Focus
 
-A collection of lightweight browser mini-games for developers who find themselves drifting to social media while waiting for Claude Code, Cursor, Copilot, or other AI tools to finish. Each game is designed to keep your hands busy without draining your attention, so you can return to coding refreshed.
+> **Free, instant, no-download mini-games — open in any browser and play right now!**
 
-🌐 **Live site:** https://sunny-peony-bdaa99.netlify.app/
+Whether you're a developer waiting for your AI tool to finish, a kid looking for something fun, a student on a study break, or just plain bored — you're in the right place. 🎉
+
+🌐 **Play now:** https://sunny-peony-bdaa99.netlify.app/
 
 > If you'd like to sponsor the domain **vibecoding-focus.com**, please open an issue.
 
-## Games
+---
 
-1. **Spin & Fling** - Drag and fling a ball around a physics sandbox; it bounces off walls and obstacles with satisfying sound effects.
-2. **Connect the Dots** - Connect numbered dots in the correct order to reveal shapes like stars, houses, and hearts.
-3. **Infinite Bubble Wrap** - Pop every bubble in a pattern (square, heart, smiley face) to advance to the next shape — endlessly satisfying.
-4. **Memory Card Match** - Flip emoji cards and find matching pairs across multiple grid sizes and difficulty levels.
-5. **Whack-a-Mole** - Tap moles as they randomly pop up in a 3×3 grid before they disappear.
-6. **Simon Says** - Watch a growing color sequence and repeat it back by tapping the colored pads.
-7. **Reaction Time** - Tap the moment the screen turns green and see how fast your reflexes really are.
-8. **Snake** - Guide a growing snake to eat food while avoiding walls and your own tail; speed increases as you score.
+## 🕹️ What Is This?
 
-Have a better game idea? Open an issue, or even better, a PR!
+A growing collection of lightweight, browser-based mini-games. No install, no login, no ads — just open the link and start playing. Each game loads in seconds and works on phones, tablets, and desktops.
+
+**Perfect for:**
+- 🧑‍💻 Developers killing time while waiting for builds or AI tools (Claude Code, Cursor, Copilot…)
+- 😴 Anyone who's bored and needs a quick distraction
+- 🧒 Kids who want something simple and fun to play
+- 📖 Students taking a quick mental break between study sessions
+- 🚌 Anyone with a few spare minutes on the go
+
+---
+
+## 🎯 The Games
+
+| # | Game | Description |
+|---|------|-------------|
+| 1 | ⚽ **Penalty Kick** | Aim and shoot at the goal — beat the goalkeeper! |
+| 2 | ⭕ **Tic-Tac-Toe** | Classic X vs O — can you outsmart the AI? |
+| 3 | 🎨 **Color Match** | Match colors as fast as you can before time runs out. |
+| 4 | 🔵 **Spin & Fling** | Drag and fling a ball around a physics sandbox with satisfying bounces. |
+| 5 | 🔢 **Connect the Dots** | Connect numbered dots in order to reveal hidden shapes like stars and hearts. |
+| 6 | 🫧 **Infinite Bubble Wrap** | Pop every bubble to complete the shape — endlessly satisfying. |
+| 7 | 🃏 **Memory Card Match** | Flip emoji cards and find all the matching pairs. |
+| 8 | 🐹 **Whack-a-Mole** | Tap the moles before they hide — how many can you get? |
+| 9 | 🎵 **Simon Says** | Watch the color pattern and repeat it back. How long can your memory hold? |
+| 10 | ⚡ **Reaction Time** | Tap the instant the screen turns green. How fast are your reflexes? |
+| 11 | 🐍 **Snake** | Eat, grow, and don't crash! A timeless classic that speeds up as you score. |
+
+---
+
+## 🌟 Why Play Here?
+
+- ✅ **Zero setup** — just click and play
+- ✅ **Works everywhere** — desktop, mobile, tablet
+- ✅ **No accounts, no ads, no tracking**
+- ✅ **Quick to pick up** — most games take seconds to understand
+- ✅ **Endless variety** — a new random game loads every time you tap the shuffle button ↻
+
+---
+
+## 💡 Want to Add a Game?
+
+Have a fun idea for a new mini-game? We'd love to hear it! Open an issue to suggest it, or submit a pull request if you'd like to build it yourself. Contributions of all skill levels are welcome! 🙌
