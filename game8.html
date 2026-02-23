@@ -22,7 +22,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
             touch-action: none;
@@ -50,11 +50,50 @@
         }
 
         #hint {
-            position: fixed;
-            bottom: 30px;
             color: rgba(255, 255, 255, 0.5);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             pointer-events: none;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 12px;
+            gap: 6px;
+            user-select: none;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dpad-btn-size {
+            width: 60px;
+            height: 60px;
+        }
+
+        #controls button {
+            width: 60px;
+            height: 60px;
+            border: none;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            font-size: 1.4rem;
+            cursor: pointer;
+            touch-action: manipulation;
+            backdrop-filter: blur(4px);
+            transition: background 0.1s;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+
+        #controls button:active {
+            background: rgba(255, 255, 255, 0.38);
         }
 
         #game-over {
@@ -117,7 +156,17 @@
         <p>Tap to play again</p>
     </div>
 
-    <div id="hint">Swipe or use arrow keys to move</div>
+    <div id="hint">Swipe, tap controls, or use arrow keys</div>
+
+    <div id="controls">
+        <button id="btn-up" aria-label="Up">▲</button>
+        <div class="controls-row">
+            <button id="btn-left" aria-label="Left">◀</button>
+            <div class="dpad-btn-size"></div>
+            <button id="btn-right" aria-label="Right">▶</button>
+        </div>
+        <button id="btn-down" aria-label="Down">▼</button>
+    </div>
 
     <script>
         const canvas = document.getElementById('game-canvas');
@@ -127,12 +176,12 @@
         const gameOverScreen = document.getElementById('game-over');
 
         // --- Grid Setup ---
-        const GRID_COUNT = 20;
+        const GRID_COUNT = 15;
         let cellSize;
         let canvasSize;
 
         function resizeCanvas() {
-            const maxSize = Math.min(window.innerWidth * 0.92, window.innerHeight * 0.75, 500);
+            const maxSize = Math.min(window.innerWidth * 0.92, window.innerHeight * 0.58, 420);
             canvasSize = Math.floor(maxSize / GRID_COUNT) * GRID_COUNT;
             cellSize = canvasSize / GRID_COUNT;
             canvas.width = canvasSize;
@@ -154,7 +203,7 @@
         let bestScore = 0;
         let gameRunning = false;
         let gameLoop = null;
-        let speed = 150;
+        let speed = 220;
 
         // --- Audio Context Setup ---
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -227,7 +276,7 @@
             direction = { x: 1, y: 0 };
             nextDirection = { x: 1, y: 0 };
             score = 0;
-            speed = 150;
+            speed = 220;
             scoreDisplay.textContent = 'Score: 0';
             gameOverScreen.classList.remove('show');
             placeFood();
@@ -281,7 +330,7 @@
                 placeFood();
 
                 // Speed up slightly
-                if (speed > 70) {
+                if (speed > 100) {
                     speed -= 2;
                     clearInterval(gameLoop);
                     gameLoop = setInterval(update, speed);
@@ -440,6 +489,32 @@
             if (!gameRunning) {
                 startGame();
             }
+        });
+
+        // --- Controls: D-Pad Buttons ---
+        function handleDpad(dx, dy) {
+            if (!gameRunning) {
+                startGame();
+                return;
+            }
+            if (dx === 1 && direction.x !== -1) nextDirection = { x: 1, y: 0 };
+            else if (dx === -1 && direction.x !== 1) nextDirection = { x: -1, y: 0 };
+            else if (dy === -1 && direction.y !== 1) nextDirection = { x: 0, y: -1 };
+            else if (dy === 1 && direction.y !== -1) nextDirection = { x: 0, y: 1 };
+        }
+
+        [
+            ['btn-up', 0, -1],
+            ['btn-down', 0, 1],
+            ['btn-left', -1, 0],
+            ['btn-right', 1, 0],
+        ].forEach(([id, dx, dy]) => {
+            const btn = document.getElementById(id);
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleDpad(dx, dy);
+            }, { passive: false });
+            btn.addEventListener('mousedown', () => handleDpad(dx, dy));
         });
 
         // --- Init ---
