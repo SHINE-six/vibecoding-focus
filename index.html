@@ -64,20 +64,62 @@
             font-weight: 300;
             z-index: 10000;
             user-select: none;
-            pointer-events: none;
+            cursor: pointer;
             font-variant-numeric: tabular-nums;
             background: rgba(0, 0, 0, 0.3);
             padding: 5px 12px;
             border-radius: 20px;
             backdrop-filter: blur(5px);
             text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            transition: opacity 0.2s;
+        }
+
+        #timer.paused {
+            animation: pulse-pause 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-pause {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        #pause-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9998;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(3px);
+        }
+
+        #pause-overlay.visible {
+            display: flex;
+        }
+
+        #pause-overlay .pause-text {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.5rem;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-weight: 300;
+            user-select: none;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.5);
         }
     </style>
 </head>
 
 <body>
 
-    <div id="timer">00:00</div>
+    <div id="timer" role="button" tabindex="0" onclick="togglePause()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePause()}">00:00</div>
+
+    <!-- Pause overlay shown when timer is paused -->
+    <div id="pause-overlay" role="button" tabindex="0" onclick="togglePause()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();togglePause()}">
+        <span class="pause-text">⏸ Paused — tap to resume</span>
+    </div>
 
     <!-- The Game Screen -->
     <iframe id="game-frame" src=""></iframe>
@@ -193,9 +235,13 @@
 
         // --- TIMER & AUDIO LOGIC ---
         const timerElement = document.getElementById('timer');
+        const pauseOverlay = document.getElementById('pause-overlay');
         let startTime = Date.now();
         let lastMinutePlayed = 0;
         let audioCtx;
+        let isPaused = false;
+        let pausedElapsed = 0; // ms of elapsed time saved when paused
+        let manuallyPaused = false; // track if user paused manually
 
         function initAudio() {
             if (!audioCtx) {
@@ -246,26 +292,65 @@
         }
 
         function updateTimer() {
-            const now = Date.now();
-            const diff = Math.floor((now - startTime) / 1000);
+            if (!isPaused) {
+                const now = Date.now();
+                const diff = Math.floor((now - startTime) / 1000);
 
-            // Format mm:ss
-            const minutes = Math.floor(diff / 60);
-            const seconds = diff % 60;
-            const formatted =
-                (minutes < 10 ? "0" + minutes : minutes) + ":" +
-                (seconds < 10 ? "0" + seconds : seconds);
+                // Format mm:ss
+                const minutes = Math.floor(diff / 60);
+                const seconds = diff % 60;
+                const formatted =
+                    (minutes < 10 ? "0" + minutes : minutes) + ":" +
+                    (seconds < 10 ? "0" + seconds : seconds);
 
-            if (timerElement) timerElement.textContent = formatted;
+                if (timerElement) timerElement.textContent = formatted;
 
-            // Check for minute chime
-            if (minutes > 0 && minutes > lastMinutePlayed) {
-                playChime();
-                lastMinutePlayed = minutes;
+                // Check for minute chime
+                if (minutes > 0 && minutes > lastMinutePlayed) {
+                    playChime();
+                    lastMinutePlayed = minutes;
+                }
             }
 
             requestAnimationFrame(updateTimer);
         }
+
+        function pauseTimer() {
+            if (!isPaused) {
+                isPaused = true;
+                pausedElapsed = Date.now() - startTime;
+                timerElement.classList.add('paused');
+                pauseOverlay.classList.add('visible');
+            }
+        }
+
+        function resumeTimer() {
+            if (isPaused) {
+                isPaused = false;
+                startTime = Date.now() - pausedElapsed;
+                timerElement.classList.remove('paused');
+                pauseOverlay.classList.remove('visible');
+            }
+        }
+
+        function togglePause() {
+            if (isPaused) {
+                manuallyPaused = false;
+                resumeTimer();
+            } else {
+                manuallyPaused = true;
+                pauseTimer();
+            }
+        }
+
+        // Auto-pause when browser tab becomes hidden, resume when visible
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                pauseTimer();
+            } else if (!manuallyPaused) {
+                resumeTimer();
+            }
+        });
 
         // Initialize audio on interactions
         ['click', 'touchstart', 'keydown'].forEach(e => 
